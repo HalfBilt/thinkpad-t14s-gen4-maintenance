@@ -25,7 +25,7 @@
 | 安全 | Secure Boot 关；VBS / 内存完整性关；测试签名**开**；智能应用控制(SAC)**关**（见七.2） |
 | 电源 | 电源计划 = 平衡；AC 电源模式 = 最佳性能 |
 | 电池 | 设计 57,000 / 满充 48,180 mWh → **健康度 84.5%，70 次循环**（正常损耗，跌破 80% 再考虑换） |
-| 温度 | **ACPI 热区是空壳**（`_PSV=0K`，全 0）→ 系统温度读数不可信。CPU 的 DTS 可用，但**必须按 SDM 换算**：`温度 = TjMax − ((MSR 0x1B1>>16)&0x7F)`，`TjMax` 读 `MSR 0x1A2`（本机 = 100）。⚠️ 直接把差值当摄氏度会得出"满载 0°C"的荒谬值——是公式错，不是寄存器失真。要绝对值用 Vantage / HWiNFO64 交叉验证 |
+| 温度 | **别用 WMI 读热区**：ACPI 热区 `\_TZ.THM0` 是存在的，它的 `_TMP` 其实就是去读 EC 的 `0x78`（见《风扇与过热保护》），但用户态常用的那个 WMI 查询（`MSAcpi_ThermalZoneTemperature`）在本机**会把调用方永久挂死**（实测卡死一个后台进程 20 分钟，只能重启）——**别碰**；`_PSV = 0K` 只是说没有被动降温档。CPU 的 DTS 可用，但**必须按 SDM 换算**：`温度 = TjMax − ((MSR 0x1B1>>16)&0x7F)`，`TjMax` 读 `MSR 0x1A2`（本机 = 100）。⚠️ 直接把差值当摄氏度会得出"满载 0°C"的荒谬值——是公式错，不是寄存器失真。空闲可信、**满载会失真**；要绝对值用 EC `0x78` 或 Vantage / HWiNFO64 交叉验证 |
 
 > SSD 的 SMART 寿命 Windows 读不到（OEM 盘通病，`MSStorageDriver_FailurePredictStatus` 不支持）。想看磨损率装 Kingston SSD Manager 或 CrystalDiskInfo。
 
@@ -287,7 +287,8 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
 | `pl1_w_batt` / `pl2_w_batt` | **电池档** |
 | `mmio_mode` | `disable`（推荐）开机把固件侧 MMIO 清零+锁死，之后**只写 MSR**，改配置免重启；`value`（老方案）写目标值进 MMIO+锁，改配置要重启 |
 
-**本机配置**（2026-10-18）：`mmio_mode = disable`；插电 **PL1=40W / PL2=64W**，电池 **PL1=28W / PL2=55W**。
+**本机配置**（2026-10-18）：`mmio_mode = disable`；插电 **PL1=40W / PL2=64W**，电池 **PL1=28W / PL2=55W**；
+风扇走**自定义曲线**（`fan.mode = curve`），过热保护**开着**（`guard.enabled = true`，预警 93°C / 严重 96°C / 解除 78°C）。
 
 这份就是本机实际在用的 `config.json`，也是重装后唯一要补回来的东西（工具仓库里的那份是分享默认值 `pl1_w=0` 自动模式，**不要用**）：
 
@@ -295,16 +296,40 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
 {
   "pl1_w": 40.0,
   "pl2_w": 64.0,
+  "pl1_w_batt": 28.0,
+  "pl2_w_batt": 55.0,
   "pl1_time": 35,
   "pl2_time": 66,
   "min_pl1_w": 15.0,
   "lock_mmio": true,
-  "comment": "插电(AC)高性能: PL1=40W PL2=64W; 电池平衡: PL1=28W PL2=55W。mmio_mode=disable: 开机把固件侧MMIO清零+锁, 之后所有档位只写MSR —— 改配置/拔插电都免重启。实测依据: MSR 0x610 可写; min(MSR,MMIO)语义; 满载60秒触100C仅42W。",
-  "pl1_w_batt": 28.0,
-  "pl2_w_batt": 55.0,
-  "mmio_mode": "disable"
+  "mmio_mode": "disable",
+  "fan": {
+    "mode": "curve",
+    "level": 0,
+    "curve": [[50, 1], [58, 2], [66, 4], [74, 6], [82, 7], [999, 64]],
+    "hyst": 1.5
+  },
+  "guard": {
+    "enabled": true,
+    "warn_c": 93.0,
+    "crit_c": 96.0,
+    "escape_c": 105.0,
+    "recover_c": 78.0,
+    "warn_pl1_w": 20.0,
+    "warn_pl2_w": 25.0,
+    "crit_pl1_w": 10.0,
+    "crit_pl2_w": 12.0,
+    "dts_crit_c": 97.0,
+    "force_fan_max": true,
+    "trip_flags": true,
+    "escape_hibernate": false
+  },
+  "comment": "本机实用配置。插电(AC): PL1=40W PL2=64W; 电池: PL1=28W PL2=55W。mmio_mode=disable: 开机把固件侧 MMIO 清零+锁, 之后只写 MSR, 改配置/拔插电免重启。fan=风扇模式与温度曲线; guard=过热保护阈值(0x78 温度线 + EC 0x89/0x8A/0x8B 固件标志线, 详见 说明.txt)。"
 }
 ```
+
+> `fan` / `guard` 这两个段的含义、阈值为什么是这些数、以及背后的实测依据，都在
+> **[`风扇与过热保护.md`](风扇与过热保护.md)**。改它们**不用重启**（服务每分钟重读一次配置）。
 
 核对一致的命令（重装后可跑）：
 
@@ -332,10 +357,15 @@ Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段�
 ### 8.4 怎么用 / 怎么验证
 
 ```
-1-install.bat    装（要管理员）
-2-check.bat      看状态：当前电源/档位、两份功耗墙、频率、温度、值守服务
-3-fix-now.bat    立即修一次（降频时手动救急）
-9-uninstall.bat  卸载（删服务 + 计划任务，不删文件）
+1-install.bat      装（要管理员）
+2-check.bat        看状态：当前电源/档位、两份功耗墙、频率、温度、固件过热标志、风扇、值守服务
+3-fix-now.bat      立即修一次（降频时手动救急）
+4-风扇状态.bat      看风扇档位/转速/EC 温度/固件过热标志
+5-风扇曲线.bat      回到自定义曲线（推荐；闲置安静、热了能到满速）
+6-风扇满速.bat      风扇压满速（会写进配置，服务一直维持，直到跑 5 恢复）
+7-风扇交还EC自动.bat 交还给 EC 自己管（原生平线曲线，不推荐）
+8-风扇固定档.bat    固定到某个档位
+9-uninstall.bat    卸载（删服务 + 计划任务，不删文件）
 ```
 
 ```powershell
