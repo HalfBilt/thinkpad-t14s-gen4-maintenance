@@ -40,6 +40,10 @@ OUT = os.path.join(HERE, '满载温度-%s.txt' % time.strftime('%Y%m%d-%H%M%S'))
 DUR = int(sys.argv[1]) if len(sys.argv) > 1 else 60
 STEP = 3
 L = []
+if not cpf.is_admin():
+    sys.exit('[X] 需要管理员权限（要读 MSR / 装 TSCtl 驱动）。\n'
+             '    请双击同目录的 11-满载温度60秒.bat —— 它会自己弹 UAC 提权再跑。')
+
 cpf.ensure_driver(verbose=False)
 
 u = cpf.rdmsr(0x606)

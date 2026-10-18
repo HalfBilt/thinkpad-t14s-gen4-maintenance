@@ -37,6 +37,10 @@ _spec = importlib.util.spec_from_file_location('cpf', os.path.join(BASE, 'CpuPLF
 cpf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cpf)
 
+if not cpf.is_admin():
+    sys.exit('[X] 需要管理员权限（要读 MSR / 装 TSCtl 驱动）。\n'
+             '    请双击同目录的 10-性能自检.bat —— 它会自己弹 UAC 提权再跑。')
+
 OUT = os.path.join(HERE, '性能自检-%s.txt' % time.strftime('%Y%m%d-%H%M%S'))
 L = []
 issues = []
