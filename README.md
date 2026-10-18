@@ -232,7 +232,9 @@ Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operati
 
 ## 八、CPU 被锁 0.4GHz 的修复（CpuPLFix）
 
-> 源码 <https://github.com/HalfBilt/CpuPLFix>｜装在 `C:\Users\Ting\AppData\Roaming\CpuPLFix`｜分享包 `桌面\CpuPLFix` + `CpuPLFix.zip`
+> 源码与发布包 <https://github.com/HalfBilt/CpuPLFix>（仓库里带 `runtime.zip`，`1-install.bat` 会自动解压，**解压即用、不依赖系统 Python**）｜本机安装在 `C:\Users\Ting\AppData\Roaming\CpuPLFix`
+>
+> ⚠️ **工具本体不存进本仓库**（这里只放手册和脚本）。原因：工具在 GitHub 上有唯一的家，存第二份迟早会出现"两份谁新谁旧"的漂移。本仓库里**唯一**需要保管的工具相关东西，是下面 8.3 里那份本机专属的 `config.json`。
 
 ### 8.1 症状与根因
 
@@ -279,7 +281,33 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
 | `pl1_w_batt` / `pl2_w_batt` | **电池档** |
 | `mmio_mode` | `disable`（推荐）开机把固件侧 MMIO 清零+锁死，之后**只写 MSR**，改配置免重启；`value`（老方案）写目标值进 MMIO+锁，改配置要重启 |
 
-**本机配置**：`mmio_mode = disable`；插电 **PL1=40W / PL2=64W**，电池 **PL1=28W / PL2=55W**。
+**本机配置**（2026-10-18）：`mmio_mode = disable`；插电 **PL1=40W / PL2=64W**，电池 **PL1=28W / PL2=55W**。
+
+这份就是本机实际在用的 `config.json`，也是重装后唯一要补回来的东西（工具仓库里的那份是分享默认值 `pl1_w=0` 自动模式，**不要用**）：
+
+```json
+{
+  "pl1_w": 40.0,
+  "pl2_w": 64.0,
+  "pl1_time": 35,
+  "pl2_time": 66,
+  "min_pl1_w": 15.0,
+  "lock_mmio": true,
+  "comment": "插电(AC)高性能: PL1=40W PL2=64W; 电池平衡: PL1=28W PL2=55W。mmio_mode=disable: 开机把固件侧MMIO清零+锁, 之后所有档位只写MSR —— 改配置/拔插电都免重启。实测依据: MSR 0x610 可写; min(MSR,MMIO)语义; 满载60秒触100C仅42W。",
+  "pl1_w_batt": 28.0,
+  "pl2_w_batt": 55.0,
+  "mmio_mode": "disable"
+}
+```
+
+核对一致的命令（重装后可跑）：
+
+```powershell
+# 三份关键文件应与本手册记录一致
+Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段一致
+(Get-Item "$env:APPDATA\CpuPLFix\TSCtl.sys").Length       # 50216
+(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 47993
+```
 
 > 原理：MMIO 被禁用后 CPU 取 `min(MSR, MMIO)` 就只剩 MSR，于是改配置 1 分钟内自动生效、拔插电源秒级切换档位（服务订阅 `PBT_APMPOWERSTATUSCHANGE`），也不再依赖"开机时是什么电源状态"。
 > ⚠️ 前提是 **MSR 0x610 可写**（本机早前实测可写）。若换机器 MSR 被 BIOS 锁，把 `mmio_mode` 改回 `value` 退回老方案。
@@ -390,7 +418,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Ting\Desktop\Herme
 
 > ⚠️ **`scripts` 里的 `.ps1` 必须保存为「UTF-8 带 BOM」**，否则 PowerShell 5.1 按 GBK 解析会报语法错（`MissingEndCurlyBrace`）。
 
-> 体检**不查**温度 / 功耗墙具体数值（那要读 MSR/MMIO，需提权）——怀疑降频时用 `2-check.bat` 或 `perfcheck.bat`（第八节）。
+> 体检**不查**温度 / 功耗墙具体数值（那要读 MSR/MMIO，需提权）——怀疑降频时用 `2-check.bat`（在 CpuPLFix 目录里）或 `perfcheck.bat`（在 agent 工作区）。**这两个都不在本仓库**：前者属于 CpuPLFix 工具，后者属于 agent 工作区。
 
 **Hermes 桌面端两个坑（2026-10-12 解决）**
 
@@ -409,8 +437,10 @@ git clone https://github.com/HalfBilt/thinkpad-t14s-gen4-maintenance.git
 |---|---|---|
 | 1 | 装**联想官方音频驱动整包**（Intel SST + Realtek）→ 跑 `scripts\06-安装WinSoftVol.ps1` → 重启（恢复音量条） | 七.1 |
 | 2 | 跑 `scripts\08-关闭智能应用控制.ps1` → 重启（**不做这步**，WinSoftVol 会被 SAC 拦成 Code 39、直接没声） | 七.2 |
-| 3 | 装 **CpuPLFix**（<https://github.com/HalfBilt/CpuPLFix>）→ 按八.3 填 `config.json`（AC 40/64、电池 28/55、`mmio_mode=disable`）→ 重启 | 八.3 |
+| 3 | 装 **CpuPLFix**：`git clone https://github.com/HalfBilt/CpuPLFix` → **把 `config.json` 换成八.3 里那段**（仓库自带的是分享默认值）→ 右键**以管理员运行** `1-install.bat` → 重启 | 八.3 |
 | 4 | 核对 BIOS 仍是 **S3**、Secure Boot **关**、测试签名**开**；测试模式水印用 UWD 去掉 | 一 · 九 |
 | 5 | 跑 `scripts\体检.bat` 验收：应显示音频 0 问题、降频值守 0 问题 | 十 |
 
 > 第一节里的电池健康度、DriverStore 包数、日志条数属于"当时状态"，不是要恢复的东西，重装后会自然重新累积。
+
+> **仓库边界**：这里只存「手册 + `scripts\`」。**CpuPLFix 工具本体不存第二份**（唯一来源是 <https://github.com/HalfBilt/CpuPLFix>，里面带 `runtime.zip`）；本仓库里唯一和它相关的东西，是 8.3 里那段本机专属的 `config.json`。同理，agent 工作区里的 `perfcheck.bat` / `_perfcheck.py` / `_burn60b.py` 也不在这里。
