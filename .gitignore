@@ -12,3 +12,11 @@ __pycache__/
 # CpuPLFix 工具本体不入库：唯一来源 https://github.com/HalfBilt/CpuPLFix（自带 runtime.zip）
 # 本机专属的 config.json 内容已抄进 README 8.3，因此这里不需要留任何副本。
 scripts/CpuPLFix/
+
+# 13-EC诊断.py 生成的报告，不入库
+scripts/EC体检-*.txt
+scripts/EC温度-*.txt
+scripts/EC风扇-*.txt
+
+# 就地备份文件（*.bak、*.bak-日期）不入库
+*.bak*

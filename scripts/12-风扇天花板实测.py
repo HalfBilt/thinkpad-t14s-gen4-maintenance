@@ -46,7 +46,7 @@ CTRL_PORT, DATA_PORT = 0x66, 0x62
 FLAG_OBF, FLAG_IBF   = 0x01, 0x02
 CMD_READ, CMD_WRITE  = 0x80, 0x81
 EC_FAN     = 0x2F      # HFSP 风扇控制寄存器
-EC_FANSW   = 0x31      # 风扇选择，读转速前写 0
+EC_FANSW   = 0x31      # 老机型用它选主/副风扇；本机没用（见 EC.snapshot 的说明），保留只为对照
 EC_RPM_LO  = 0x84
 EC_RPM_HI  = 0x85
 EC_CPU_TMP = 0x78
@@ -130,11 +130,15 @@ class EC(object):
             raise IOError('EC IBF 超时(写 0x%02X)' % offset)
 
     def snapshot(self):
-        """返回 (EC 温度, HFSP, 转速)。写 0x31=0 只是选主风扇，旧工具在自动模式下也这么读。"""
-        self.write(EC_FANSW, 0x00)
+        """返回 (EC 温度, HFSP, 转速)。
+
+        2026-10-18 实测: 读转速**不需要**写 0x31(=0)。本机 DSDT 里 0x31 的位是
+        HUWB(bit2)/VPON(bit6)/VRST(bit7), "写 0 选主风扇" 是老 X60 那代的做法;
+        实测 0x31 常驻 0x00 且写与不写读到的转速一样。所以这里一个字都不写。
+        """
         t = self.read(EC_CPU_TMP)
         f = self.read(EC_FAN)
-        lo = self.read(EC_RPM_LO)
+        lo = self.read(EC_RPM_LO)      # 必须先读低字节(固件 bug, thinkpad_acpi 记载)
         hi = self.read(EC_RPM_HI)
         return t, f, (hi << 8) | lo
 

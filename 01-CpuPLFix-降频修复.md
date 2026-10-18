@@ -60,11 +60,12 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 |---|---|
 | 工具目录 | `C:\Users\Ting\AppData\Roaming\CpuPLFix`（`runtime\` 是内置 Python，**别删**） |
 | 主程序 / 服务 | `CpuPLFix.py` / `CpuPLFixSvc.py` |
+| 配置命令 | `CpuPLFixCfg.py`（入口 `3-config.bat`；只读写 `config.json`，带范围校验和 `undo`） |
 | 驱动 | `TSCtl.sys`（从 ThrottleStop 提取的签名驱动，服务名 `TSCtl`，按需启动） |
 | 看守服务 | `CpuPLFixSvc`（`Start=2`、`Type=16`） |
 | 计划任务 | `\CpuPLFix`（SYSTEM 身份；普通权限查不到，用日志确认它在跑） |
-| 日志 | `logs\fix.log` |
-| 命令行入口 | 同目录 9 个 `.bat`（见 §5） |
+| 日志 | `logs\fix.log`（只记事件、不记轮询；超 **2MB** 自动滚成 `fix.log.1`，只留一份）。**2026-10-18 起**：① `2-check` 的整屏输出**不再写进日志**，只留一行摘要；② `boot` 的触发标签改成**实测**（`开机`/`开机后复查`/`睡眠/休眠唤醒后(睡掉 N 秒)`/`定时复查`），状态正常的复查只记一行；③ 新增 `logs\boot_last.txt`（判断"到底睡没睡"的小状态文件，删了只会让下一次判成"唤醒/复查"，无副作用） |
+| 命令行入口 | 同目录 4 个 `.bat`：`1-install` / `2-check` / `3-config` / `9-uninstall`（见 §5） |
 
 `config.json` 键位：
 
@@ -101,7 +102,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
   "fan": {
     "mode": "curve",
     "level": 0,
-    "curve": [[63, 2], [76, 6], [999, 64]],
+    "curve": [[56, 2], [79, 6], [999, 64]],
     "hyst": 5.0
   },
   "guard": {
@@ -175,8 +176,28 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 ```
 1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
 2-check.bat          看状态：电源/档位、两份功耗墙、频率、温度、固件过热标志、风扇档位/转速/EC 温度 + 曲线 + 保护档
+3-config.bat         命令行改配置：ac= / batt= / fan= / guard= …（不带参数 = 看当前值）
 9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
 ```
+
+> `3-config.bat` **只改 `config.json`**：不碰硬件、不用管理员、跑完就退出，不常驻任何进程。
+> 保存后看守服务 ≤60 秒自动重读；上一版自动存成 `config.json.bak`，改错了一条命令退回。
+>
+> ```bat
+> 3-config.bat                     :: 看全部当前值
+> 3-config.bat ac=40,55            :: 插电 PL1,PL2（0 = 自动）
+> 3-config.bat batt=20,28          :: 电池档（0,0 = 跟随插电）
+> 3-config.bat fan=56,79,5         :: 风扇曲线温度边界 + 回差
+> 3-config.bat lv=2,6,64           :: 每段风扇档位（64 = 满速）
+> 3-config.bat guard=95,98,105,78  :: 预警/严重/逃生/解除温度
+> 3-config.bat pl_guard=20,28,10,14 :: 保护时的 PL1,PL2（预警 / 严重）
+> 3-config.bat poll=5,15,30        :: 主循环 / EC / 固件标志（秒）
+> 3-config.bat mmio=disable        :: disable（推荐）或 value
+> 3-config.bat undo                :: 撤销上一次保存
+> ```
+>
+> 每一项都有范围校验，写错只会报错、不会写盘（例如 `guard=95,90,...` 会被拒绝）。
+> 完整键名随时用 `3-config.bat help` 看。
 
 > 调试用的 6 个 bat（立即修 / 风扇状态 / 曲线 / 满速 / 交还 EC / 固定档）2026-10-18 已删 —— 平时用不到，
 > 命令本身都还在：`%APPDATA%\CpuPLFix\runtime\python.exe %APPDATA%\CpuPLFix\CpuPLFix.py fan status|curve|max|auto|level N`
@@ -192,8 +213,28 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 ```
 20:52:49 svc  检测到功耗墙异常: MMIO PL1=15.00W lock=0 (目标 40.00W), 重新锁定
 20:52:49 svc  修复后: MMIO PL1=40.00W PL2=55.00W lock=1  [√] 已生效并锁定
-20:52:50 boot 进程启动(开机): 系统已运行 15.2 秒 → 已是目标状态, 无需修复
+20:52:50 boot 进程启动(开机): 系统已运行 15.2 秒, 解释器启动耗时 0.31 秒
+20:52:50 boot [*] 已是目标状态: MMIO 清零+锁, MSR PL1=40.00W PL2=55.00W, 倍频 43, 无需修复
 18:56:38 svc  轮询节奏: 主循环 5 秒(只对功耗墙/电源档, 不碰 EC) / EC 读 15 秒 / 固件标志 30 秒
+```
+
+**`boot` 那两行现在有 4 种标的（2026-10-18 起实测判断，不再靠 uptime 瞎猜）**：
+
+| 标签 | 什么时候 |
+|---|---|
+| `开机` | 真·冷启动 / 重启 |
+| `开机后复查` | 开机后 30 分钟内，计划任务**每 5 分钟重复**叫的那次（没睡过） |
+| `睡眠/休眠唤醒后(睡掉 N 秒)` | 中间真睡过（用 `QueryUnbiasedInterruptTime` 跟墙钟比出来的） |
+| `定时复查` | 其它重复触发（没睡过） |
+
+> `开机后复查` / `定时复查` **且状态正常**时只记一行（`[*] 定时复查: 状态正常, 无需修复`），
+> 不再每次刷两行 —— 以前开机后半小时能刷十几行"睡眠/休眠唤醒后"，全是假的（系统明明没睡）。
+
+`2-check.bat` 跑完只在日志里留**一行摘要**（不再把整屏输出灌进 `fix.log`）：
+
+```
+===== 2026-10-18 23:12:06 check =====
+[*] 手动体检: AC  MSR PL1=40.00W PL2=55.00W  倍频 43  EC温度 85°C  DTS 95°C  风扇 满速 4658RPM  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
 ```
 
 唤醒后应出现这两行之一：
@@ -222,11 +263,24 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 ## 6. 已知限制 / 回滚
 
 - 只管 PL1/PL2 这一条路径。**BD PROCHOT**、温度墙、电池/适配器识别问题导致的降频它管不了（要用 ThrottleStop 排查）。
+  → 2026-10-18 补了观察手段：`scripts\13-EC诊断.bat` 的 **`throttle`** 子命令会把"倍频掉下来那一瞬间"连同
+  功耗墙 / `PROCHOT`(封装与 core) / EC 状态位一起记下来，用来判定到底是哪条线在压 CPU。见 `05` §7。
 - MMIO 偏移按 `0x59A0`（Intel 近几代通用）。换机器先跑 `2-check.bat`，读不到或数值明显不对就是偏移不同。
 - 开机阶段做不到零延迟（0.4GHz 时 Windows 自己启动慢十倍），本机实测 14~24 秒。
 - 开了**内存完整性（HVCI）**时可能拒绝加载这类直接访问物理内存的驱动（本机是关的）。
 - **需要重启的三种情况**：① `mmio_mode` 在 disable/value 间切换；② value 模式升档超过已锁值；
   ③ 手动想改被锁死的 MMIO 寄存器。**改配置不用重启；改代码要重启服务。**
+- **2026-10-18 改过 `CpuPLFix.py`**（不含在上面"三种情况"里，**不用重启服务** —— 服务不调用这几处，
+  而 `boot`/`check` 每次都是新进程，改完立即生效）：
+  ① `ec_rpm()` 去掉了"读转速前写 `0x31=0`"（本机 `0x31` 是 `HUWB`/`VPON`/`VRST`，不是老 X60 那代的"选风扇"；
+  实测写与不写读到的转速完全一样），并把 `0x84`/`0x85` 两次读放进同一把 EC 互斥体里；
+  ② `cmd_fan` 状态里 `ec_rpm()` 原来被调了两遍 → 只读一次；
+  ③ `2-check.bat` 多一行 `其它 EC 温度`（TTS1/TTS6/TTS2/TTS3/TTS4/HWAT，**只看不参与逻辑**）；
+  ④ **`2-check` 的整屏输出不再写进 `fix.log`**，只留一行摘要（原来 43 个 `check` 块占了日志一多半）；
+  ⑤ **`boot` 的触发标签改成实测**（见 §5 那张表）：以前靠 uptime 猜，开机后 30 分钟内的 5 分钟重复
+  全被记成"睡眠/休眠唤醒后"，是假记录；现在没睡过就记 `开机后复查`/`定时复查`，且状态正常只记一行。
+  回滚：`%APPDATA%\CpuPLFix\CpuPLFix.py.bak-20261018-before-0x31-fix`（这一份**同时**覆盖上面 ①~⑤）
+  覆盖回去即可；新增的 `logs\boot_last.txt` 可留可删。详见 `05` §3。
 - 与联想/Intel 自家工具**不冲突**（Vantage、Intel IPF、Intel DTT、Windows 电源计划全走用户态 WMI/ACPI/EPP）；
   但 **ThrottleStop / XTU / QuickCPU 没装就别装**（会和它抢寄存器）。
 
