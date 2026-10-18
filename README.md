@@ -357,9 +357,9 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 > 验证唤醒：**合盖睡 1 分钟 → 开盖 → 等 5 秒 → 看日志最后 20 行**。
 > 开机第一条记录里的 **MMIO PL1** 就是"固件刚写完、工具还没动手"的现场值——想知道这次固件压到几瓦就看它。反馈问题带上 `fix.log`。
 
-**怀疑被降频时的一键自检**（比 `2-check.bat` 多跑一组负载实测）：`工作区\perfcheck.bat` → 读 `工作区\_perfcheck.py`，输出写入 `_perfcheck.txt`。它依次查功耗墙状态 → 当前倍频/温度 → 单线程 7 秒（正常应到 4.8GHz 附近）→ 8 进程 7 秒（满载功耗/散热）→ 末尾直接给结论。
+**怀疑被降频时的一键自检**（比 `2-check.bat` 多跑一组负载实测）：双击 `scripts\10-性能自检.bat`（会自动提权）→ 结果写进 `scripts\性能自检-时间.txt`。它依次查功耗墙状态 → 当前倍频/温度 → 单线程 7 秒（正常应到 4.8GHz 附近）→ 8 进程 7 秒（满载功耗/散热）→ 末尾直接给结论。
 
-**温度墙实测（60 秒满载）**：78°C 起步单调爬升，**39 秒触 100°C**，末段稳态 99~100°C；到 100°C 的同时 **Thermal Status 位置 1**，倍频 2.9→2.7GHz、功耗 49W→42W。即**这机器散热只能稳定吐 ~42W**，所以 PL1 给 40W 刚好贴顶留余量。
+**温度墙实测（60 秒满载）**（复现：双击 `scripts\11-满载温度60秒.bat`）：78°C 起步单调爬升，**39 秒触 100°C**，末段稳态 99~100°C；到 100°C 的同时 **Thermal Status 位置 1**，倍频 2.9→2.7GHz、功耗 49W→42W。即**这机器散热只能稳定吐 ~42W**，所以 PL1 给 40W 刚好贴顶留余量。
 
 > ⚠️ DTS 换算的读数**只有空闲时可信**，满载会失真。判断"满载被温度墙限频"看功耗 / 倍频回落，别只看温度数。
 > 想压温度：清灰 + 换硅脂（工程机拆机谨慎）、垫高机身，或直接调低 `pl1_w`——长时负载几乎无性能损失，温度和噪音大降。
@@ -407,6 +407,9 @@ sc.exe stop TSCtl;       sc.exe delete TSCtl          # [管理员]
 | `06-安装WinSoftVol.ps1` / `07-卸载WinSoftVol.ps1` | 装 / 卸 WinSoftVol（**需重启**） | 管理员 | 见下 |
 | `08-关闭智能应用控制.ps1` | 关 SAC（WinSoftVol 被拦时用，**需重启**，**不可逆**） | 管理员 | 见下 |
 | `09-诊断音频Code39.ps1` | **音频 Code 39 / 突然没声**一键定位 + 结论 | 普通 | **双击** |
+| `10-性能自检.bat` / `.py` | **一键判断有没有被降频**：功耗墙（MSR / MMIO / 当前档）· 温度 · 单线程睿频上限 · 8 进程满载功耗。结果存 `性能自检-时间.txt`。**会自己弹 UAC 提权**；依赖已装 CpuPLFix（借它的 TSCtl 驱动读 MSR） | 管理员 | **双击** |
+| `11-满载温度60秒.bat` / `.py` | 全核满载 **60 秒**的温度 / 功耗曲线 —— 看散热到底能稳定吐多少瓦。结果存 `满载温度-时间.txt`。同样自动提权 + 依赖 CpuPLFix | 管理员 | **双击** |
+| `_负载发生器.py` | 上面两个用的烧机小程序（把一个 CPU 线程压满），不单独用 | — | 不用管 |
 
 **以管理员运行**（文件名换成要跑的那个）：
 
@@ -418,7 +421,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Ting\Desktop\Herme
 
 > ⚠️ **`scripts` 里的 `.ps1` 必须保存为「UTF-8 带 BOM」**，否则 PowerShell 5.1 按 GBK 解析会报语法错（`MissingEndCurlyBrace`）。
 
-> 体检**不查**温度 / 功耗墙具体数值（那要读 MSR/MMIO，需提权）——怀疑降频时用 `2-check.bat`（在 CpuPLFix 目录里）或 `perfcheck.bat`（在 agent 工作区）。**这两个都不在本仓库**：前者属于 CpuPLFix 工具，后者属于 agent 工作区。
+> 体检**不查**温度 / 功耗墙具体数值（那要读 MSR/MMIO，需提权）——要查就双击 `scripts\10-性能自检.bat`（自动提权，依赖已装 CpuPLFix）。它比 CpuPLFix 自带的 `2-check.bat` 多测两项：**单线程睿频上限**（正常应到 4.8GHz）和 **8 进程满载功耗**，能直接区分"被功耗墙限住"和"散热到顶"。
 
 **Hermes 桌面端两个坑（2026-10-12 解决）**
 
@@ -440,7 +443,8 @@ git clone https://github.com/HalfBilt/thinkpad-t14s-gen4-maintenance.git
 | 3 | 装 **CpuPLFix**：`git clone https://github.com/HalfBilt/CpuPLFix` → **把 `config.json` 换成八.3 里那段**（仓库自带的是分享默认值）→ 右键**以管理员运行** `1-install.bat` → 重启 | 八.3 |
 | 4 | 核对 BIOS 仍是 **S3**、Secure Boot **关**、测试签名**开**；测试模式水印用 UWD 去掉 | 一 · 九 |
 | 5 | 跑 `scripts\体检.bat` 验收：应显示音频 0 问题、降频值守 0 问题 | 十 |
+| 6 | 想亲眼确认没被降频：双击 `scripts\10-性能自检.bat`，应看到单线程 **4.8GHz** 上下 + `[√] 睿频通路正常` | 十 |
 
 > 第一节里的电池健康度、DriverStore 包数、日志条数属于"当时状态"，不是要恢复的东西，重装后会自然重新累积。
 
-> **仓库边界**：这里只存「手册 + `scripts\`」。**CpuPLFix 工具本体不存第二份**（唯一来源是 <https://github.com/HalfBilt/CpuPLFix>，里面带 `runtime.zip`）；本仓库里唯一和它相关的东西，是 8.3 里那段本机专属的 `config.json`。同理，agent 工作区里的 `perfcheck.bat` / `_perfcheck.py` / `_burn60b.py` 也不在这里。
+> **仓库边界**：这里只存「手册 + `scripts\`」。**CpuPLFix 工具本体不存第二份**（唯一来源是 <https://github.com/HalfBilt/CpuPLFix>，里面带 `runtime.zip`）；本仓库里唯一和它相关的东西，是 8.3 里那段本机专属的 `config.json`。性能自检那两个脚本（`10` / `11`）**已经收进 `scripts\`**，但它们要借 CpuPLFix 的 Python 运行时和 TSCtl 驱动才能跑 —— 所以必须先做完上面第 3 步。
