@@ -287,15 +287,16 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
 | `pl1_w_batt` / `pl2_w_batt` | **电池档** |
 | `mmio_mode` | `disable`（推荐）开机把固件侧 MMIO 清零+锁死，之后**只写 MSR**，改配置免重启；`value`（老方案）写目标值进 MMIO+锁，改配置要重启 |
 
-**本机配置**（2026-10-18）：`mmio_mode = disable`；插电 **PL1=40W / PL2=64W**，电池 **PL1=28W / PL2=55W**；
-风扇走**自定义曲线**（`fan.mode = curve`），过热保护**开着**（`guard.enabled = true`，预警 93°C / 严重 96°C / 解除 78°C）。
+**本机配置**（2026-10-18）：`mmio_mode = disable`；插电 **PL1=40W / PL2=55W**，电池 **PL1=28W / PL2=55W**；
+风扇走**自定义曲线**（`fan.mode = curve`），过热保护**开着**（`guard.enabled = true`，预警 95°C / 严重 98°C / 解除 78°C）。
+**降频线与温控线是同一套数**：温控两档 = 插电档的 50%（20W/28W）与 25%（10W/14W），所有值都不超过 55W 这个顶。
 
 这份就是本机实际在用的 `config.json`，也是重装后唯一要补回来的东西（工具仓库里的那份是分享默认值 `pl1_w=0` 自动模式，**不要用**）：
 
 ```json
 {
   "pl1_w": 40.0,
-  "pl2_w": 64.0,
+  "pl2_w": 55.0,
   "pl1_w_batt": 28.0,
   "pl2_w_batt": 55.0,
   "pl1_time": 35,
@@ -311,20 +312,20 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
   },
   "guard": {
     "enabled": true,
-    "warn_c": 93.0,
-    "crit_c": 96.0,
+    "warn_c": 95.0,
+    "crit_c": 98.0,
     "escape_c": 105.0,
     "recover_c": 78.0,
     "warn_pl1_w": 20.0,
-    "warn_pl2_w": 25.0,
+    "warn_pl2_w": 28.0,
     "crit_pl1_w": 10.0,
-    "crit_pl2_w": 12.0,
+    "crit_pl2_w": 14.0,
     "dts_crit_c": 97.0,
     "force_fan_max": true,
     "trip_flags": true,
     "escape_hibernate": false
   },
-  "comment": "本机实用配置。插电(AC): PL1=40W PL2=64W; 电池: PL1=28W PL2=55W。mmio_mode=disable: 开机把固件侧 MMIO 清零+锁, 之后只写 MSR, 改配置/拔插电免重启。fan=风扇模式与温度曲线; guard=过热保护阈值(0x78 温度线 + EC 0x89/0x8A/0x8B 固件标志线, 详见 说明.txt)。"
+  "comment": "本机实用配置。插电(AC): PL1=40W PL2=55W; 电池: PL1=28W PL2=55W。两条线一套数: 温控档 = 插电档的 50%(20/28) 与 25%(10/14), 顶统一 55W(固件原厂值)。mmio_mode=disable: 开机把固件侧 MMIO 清零+锁, 之后只写 MSR, 改配置/拔插电免重启。fan=风扇模式与温度曲线; guard=过热保护阈值(0x78 温度线 + EC 0x89/0x8A/0x8B 固件标志线, 详见 说明.txt)。"
 }
 ```
 
@@ -337,7 +338,8 @@ CPU 实际执行**固件侧那份**。固件会在开机 / 唤醒时把它改成
 # 三份关键文件应与本手册记录一致
 Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段一致
 (Get-Item "$env:APPDATA\CpuPLFix\TSCtl.sys").Length       # 50216
-(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 47993
+(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 本机 2026-10-18: 78489（会随版本变，只作参考）
+(Get-Item "$env:APPDATA\CpuPLFix\config.json").Length     # 本机 2026-10-18: 1335
 ```
 
 > 原理：MMIO 被禁用后 CPU 取 `min(MSR, MMIO)` 就只剩 MSR，于是改配置 1 分钟内自动生效、拔插电源秒级切换档位（服务订阅 `PBT_APMPOWERSTATUSCHANGE`），也不再依赖"开机时是什么电源状态"。
@@ -351,6 +353,9 @@ Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段�
 | **折中（当前）** | 40 | ~2.6GHz |
 | 原厂长时限值 | 21 | 2.0~2.2GHz |
 | 不操心 | 0 | 原厂怎么设就怎么用 |
+
+> **PL2（短时爆发，35 秒）现在统一取 55W = 固件原厂值**。以前填过 64W：本机散热只能稳定吐 ~42W，
+> 64W 只是更快撞上温度墙（不划算），而且会让"两条线"的比例和温控档对不上。电池档保持 28W/55W。
 
 **闲置不费电**：PL 是**天花板**不是固定功耗。实测 6~9% 占用时封装只有 8.9~12.9W（约上限 1/5），大部分核进 C-state。真正耗电的是屏幕背光、Wi-Fi、后台程序；**睡眠(S3) 耗电与 PL 无关**。55W 的代价只在**满载**（更热、风扇更响、纯电池掉得更快）。
 
@@ -376,8 +381,8 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 正常日志（`svc` = 看守服务，`boot` = 计划任务）：
 
 ```
-20:52:49 svc  检测到功耗墙异常: MMIO PL1=15.00W lock=0 (目标 55.00W), 重新锁定
-20:52:49 svc  修复后: MMIO 0x804281B8002381B8 PL1=55.00W PL2=55.00W lock=1  [√] 已生效并锁定
+20:52:49 svc  检测到功耗墙异常: MMIO PL1=15.00W lock=0 (目标 40.00W), 重新锁定
+20:52:49 svc  修复后: MMIO PL1=40.00W PL2=55.00W lock=1  [√] 已生效并锁定
 20:52:50 boot 进程启动(开机): 系统已运行 15.2 秒 → 已是目标状态, 无需修复
 ```
 
@@ -388,7 +393,7 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 [*] 检测到 830 秒挂起间隔, 判定刚从睡眠/休眠恢复, 立即重新检查
 ```
 
-插拔电源则应看到 `[*] 电源档位[AC/高性能/disable]: MSR PL1 28.0->40.0W PL2 55.0->64.0W`。
+插拔电源则应看到 `[*] 电源档位[AC/高性能/disable]: MSR PL1 28.0->40.0W PL2 55.0->55.0W`（两个档的 PL2 都是 55W，所以 PL2 看着没变，变的是 PL1）。
 
 > 验证唤醒：**合盖睡 1 分钟 → 开盖 → 等 5 秒 → 看日志最后 20 行**。
 > 开机第一条记录里的 **MMIO PL1** 就是"固件刚写完、工具还没动手"的现场值——想知道这次固件压到几瓦就看它。反馈问题带上 `fix.log`。
