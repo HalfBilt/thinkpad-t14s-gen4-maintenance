@@ -4,6 +4,9 @@
 > 仓库：<https://github.com/HalfBilt/thinkpad-t14s-gen4-maintenance>｜重装系统后按**第十一节**拉回来
 >
 > 只想确认"这次开机有没有事"→ **双击 `scripts\体检.bat`**，其余按下面的表查。
+>
+> 风扇 / 散热 / 固件热区（强制休眠、`_HOT`、EC 过热标志）那一条线**单独一份**：
+> **[`风扇与过热保护.md`](风扇与过热保护.md)** —— 本手册不重复。
 
 ---
 
@@ -235,6 +238,9 @@ Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operati
 > 源码与发布包 <https://github.com/HalfBilt/CpuPLFix>（仓库里带 `runtime.zip`，`1-install.bat` 会自动解压，**解压即用、不依赖系统 Python**）｜本机安装在 `C:\Users\Ting\AppData\Roaming\CpuPLFix`
 >
 > ⚠️ **工具本体不存进本仓库**（这里只放手册和脚本）。原因：工具在 GitHub 上有唯一的家，存第二份迟早会出现"两份谁新谁旧"的漂移。本仓库里**唯一**需要保管的工具相关东西，是下面 8.3 里那份本机专属的 `config.json`。
+>
+> 📎 这个工具现在还带**风扇曲线 + 过热保护**（同一个看守服务、开机自启）：那一条线的全部细节
+> （EC 寄存器、DSDT 反汇编、`_HOT` 的真相、实测数据、踩过的坑）在 **[`风扇与过热保护.md`](风扇与过热保护.md)**。
 
 ### 8.1 症状与根因
 
