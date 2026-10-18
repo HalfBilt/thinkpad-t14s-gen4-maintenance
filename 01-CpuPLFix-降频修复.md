@@ -101,8 +101,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
   "fan": {
     "mode": "curve",
     "level": 0,
-    "curve": [[50, 1], [58, 2], [66, 4], [74, 6], [82, 7], [999, 64]],
-    "hyst": 3.0
+    "curve": [[63, 2], [76, 6], [999, 64]],
+    "hyst": 5.0
   },
   "guard": {
     "enabled": true,
@@ -173,16 +173,14 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 ## 5. 怎么用 / 怎么验证
 
 ```
-1-install.bat        装（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
-2-check.bat          看状态：当前电源/档位、两份功耗墙、频率、温度、固件过热标志、风扇、值守服务
-3-fix-now.bat        立即修一次（降频时手动救急）
-4-风扇状态.bat        看风扇档位/转速/EC 温度/固件过热标志
-5-风扇曲线.bat        回到自定义曲线（推荐）
-6-风扇满速.bat        风扇压满速（写进配置，服务一直维持，直到跑 5 恢复）
-7-风扇交还EC自动.bat  交还给 EC 自己管（原生平线曲线，不推荐）
-8-风扇固定档.bat      固定到某个档位（会提示输入 1~7 或 64）
+1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
+2-check.bat          看状态：电源/档位、两份功耗墙、频率、温度、固件过热标志、风扇档位/转速/EC 温度 + 曲线 + 保护档
 9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
 ```
+
+> 调试用的 6 个 bat（立即修 / 风扇状态 / 曲线 / 满速 / 交还 EC / 固定档）2026-10-18 已删 —— 平时用不到，
+> 命令本身都还在：`%APPDATA%\CpuPLFix\runtime\python.exe %APPDATA%\CpuPLFix\CpuPLFix.py fan status|curve|max|auto|level N`
+> 或 `fix`（要管理员）。删掉的 bat 在 `%APPDATA%\_repo`（git 历史）里能取回。
 
 ```powershell
 sc.exe query CpuPLFixSvc                                    # 期望 STATE : 4  RUNNING
@@ -245,11 +243,11 @@ sc.exe stop TSCtl;       sc.exe delete TSCtl          # [管理员]
 
 ## 7. 两条硬规矩
 
-1. **`.bat` 改完必须实跑一次**：`CpuPLFix.py` 那 9 个 bat 曾全部双击无效 —— 因为
+1. **`.bat` 改完必须实跑一次**：`CpuPLFix.py` 带的 bat 曾全部双击无效 —— 因为
    `if not exist runtime\python.exe ( … exit /b 1 )` 这个块收尾的 `)` 和后面的命令挤在同一行，
    cmd 在**解析阶段**就报 `"C:\Windows\System32\cmd.exe" was unexpected at this time.` 并直接结束
-   （只有 `1-install.bat` 恰好写对了）。现在 9 个 bat 由**同一份模板生成**，三处副本（部署目录 /
-   工具仓库 / 桌面副本）保持一致，且保证 **纯 ASCII + CRLF + 无 BOM**。
+   （当时只有 `1-install.bat` 恰好写对了）。现在剩下的 bat 由**同一份模板生成**，
+   且保证 **纯 ASCII + CRLF + 无 BOM**。
    不弹 UAC 的验证办法：`cmd /c "set CPF_ELEV=1& "<路径>\2-check.bat" < nul"`。
 2. **EC 操作必须串行**：服务、bat、临时脚本读写 EC 走同一套端口事务，两个进程同时做会互相插队、
    读到别人的应答。对策（互斥体 + 一致性校验 + 读前等待 + 标志两轮确认 + 温度突变过滤）全部在 `03` §4。

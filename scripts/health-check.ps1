@@ -203,7 +203,7 @@ if ($perf.Count -gt 0) {
     W ("  16 核频率(MHz)       : {0}" -f ($perf -join ' '))
     W ("  最高 / 最低          : {0} / {1}" -f $perf[-1], $perf[0])
     if ($perf[-1] -lt 700) {
-        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 3-fix-now.bat 救急，详见手册第八节"
+        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 2-check.bat 看功耗墙，救急可双击 %APPDATA%\CpuPLFix\1-install.bat（手册 01）"
         $cpuIssue++
     }
 } else {
