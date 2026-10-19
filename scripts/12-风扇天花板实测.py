@@ -1,39 +1,41 @@
 # -*- coding: utf-8 -*-
-"""12-风扇天花板实测.py —— 满载时读 EC，确认"自带(EC 自动)风扇控制"最高能到多少转速
+"""12-风扇天花板实测.py —— 测"EC 自带(自动)风扇控制"到底能给多少转速
 
 怎么跑：双击同目录 `12-风扇天花板实测.bat`（会自己弹 UAC 提权）
 结果：屏幕输出 + 同目录 `风扇天花板-时间戳.txt`
 
-做什么（默认全程保持 EC 自动，一个字都不写风扇控制寄存器）：
-  1. 空闲基线：读 EC 的 CPU 温度 0x78 / 风扇控制寄存器 HFSP 0x2F / 转速 0x84+0x85
-  2. 全核满载 90 秒，每 3 秒采一次
-  3. 结束负载后再采一次
-  4. 可选标定（要你按 Y）：临时写 HFSP=0x40 拉真满速读 15 秒，再写回 0x80 交还 EC
+=== 2026-10-20 重写说明（旧版根本跑不出数据，两个 bug 叠加）===
+  ① **写端口只发了 3 字节**。TSCtl 的 IOCTL_WRITE_PORT 要 5 字节
+     `{u16 port; u16 pad; u8 value}`，旧版写的是 `pack('<H',port)+pack('<B',val)`。
+     结果每一次 `pio_write` 都失败 → EC 四步事务在"写命令 0x80"那一步就抛异常
+     → 屏幕上全是"读取失败: I/O 端口写 0x0066 失败"。
+  ② **没有停看守服务**。就算能读，`CpuPLFixSvc` 每 5~15 秒会把 `0x2F` 改回它要的档，
+     测到的根本不是"原生曲线"。
+  现在改成:
+     - 全程用 CpuPLFix 自己的 `ec_read_ok/ec_temp/ec_hfsp/ec_rpm`（带哨兵 + 跨进程互斥），
+       不再自己实现 EC 协议；
+     - 开测前自动停服务 + 禁用计划任务，测完恢复（`--keep-service` 可跳过）；
+     - 开测前确认 `0x2F == 0x80`（交还 EC），不是就写回去。
+
+做什么：
+  1. 停服务 → 把 HFSP 交还 EC 自动(0x80)
+  2. 空闲基线 3 次
+  3. 全核满载 N 秒（默认 90），每 3 秒采一次（EC 温度 / HFSP / 转速 / 频率 / DTS / 功耗）
+  4. 停载后回落 3 次
+  5. 汇总：满载最高转速、温度≥80°C 时的转速、HFSP 取值集合
+  6. 恢复服务
 
 判读：
-  - 自动模式 max ≈ 3880~3900 RPM → EC 自动曲线的天花板就在 6 档附近（本机实测 6 档 ≈3880），
-    也就是说"原生/自带"根本到不了 0x40 的满速（本机实测 ≈4900 RPM）。
-  - 自动模式 max ≈ 4900 RPM → 固件自己就能到满速，问题只在触发条件。
+  - 自动模式 max ≈ 3861~3900 → EC 自动天花板就在 6 档附近（本机 6 档实测 3861），
+    原生到不了 7 档(4388) / 满速(高负载 ~4900)。
+  - 自动模式 max ≈ 4400 → 原生能到 7 档。
+  - 自动模式 max ≈ 4900 → 固件自己就能拉满，问题只在触发条件。
 
-⚠️ 参考值：**只有 0x06 / 0x40 是本机实测**。
-  旧版这里抄了一张 "0x01=2029 0x02=2362 0x03=2600 0x04=2964 0x05=3185 0x06=3170
-  0x07=3924 0x40=4946" 的表 —— 那不是本机数据（而且 0x05 > 0x06 不单调、0x06 差 700 转），
-  已删除，别再抄回去（02 §1 / 03 §2.1 已同步改正）。
-    0x06 ≈ 3880 RPM（n=18，含 EC 报告 3880 + 连读 3888/3888/3889/3891）
-    0x40 ≈ 4900 RPM（n=8，4608~4901，中位 4893）
-
-  ⚠️ 要补全 1~7 档：**先 `net stop CpuPLFixSvc`**，否则看守服务的风扇曲线会在 ~5~15 秒内
-     把 `0x2F` 改回它要的档，你量到的是别人的档；完了恢复原档位再 `net start`。
-
-依赖：已装 CpuPLFix —— 借它的 TSCtl 驱动做 I/O 端口读写（**不用装 PawnIO**），
-      MSR 也走它。需要管理员（驱动设备只对管理员开放）。
-
-来源：2026-10-18 为回答"原生能不能到满速"而写。EC 协议与旧风扇工具
-      ThinkPad-T14s-Gen4-FanControl/src/fan_control.py 完全一致（同一套实测值）。
+依赖：已装 CpuPLFix（借它的 TSCtl 驱动 + EC 加固读法）。需要管理员。
 """
+import argparse
 import importlib.util
 import os
-import struct
 import subprocess
 import sys
 import time
@@ -43,122 +45,69 @@ BASE = os.path.join(os.environ.get('APPDATA') or r'C:\Users\Ting\AppData\Roaming
 BURN = os.path.join(HERE, '_负载发生器.py')
 PY = sys.executable
 
-# ---- TSCtl(ThrottleStop) 驱动的 I/O 端口 IOCTL，见 CpuPLFix README 的 IOCTL 表 ----
-IOCTL_PORT_READ  = 0x80006430      # in: u16 port  -> 1/2/4 字节
-IOCTL_PORT_WRITE = 0x80006434      # in: u16 port + 值
-
-# ---- ACPI EC 协议与寄存器（与旧风扇工具一致，本机实测）-------------------
-CTRL_PORT, DATA_PORT = 0x66, 0x62
-FLAG_OBF, FLAG_IBF   = 0x01, 0x02
-CMD_READ, CMD_WRITE  = 0x80, 0x81
-EC_FAN     = 0x2F      # HFSP 风扇控制寄存器
-EC_FANSW   = 0x31      # 老机型用它选主/副风扇；本机没用（见 EC.snapshot 的说明），保留只为对照
-EC_RPM_LO  = 0x84
-EC_RPM_HI  = 0x85
-EC_CPU_TMP = 0x78
-
-# ⚠️ 只有 0x06 / 0x40 是本机实测；其余档位没有可信标定，所以不列
-#    （旧那张 "0x01=2029 … 0x06=3170 … 0x40=4946" 是抄来的，已删，见 02 §1）。
-LEVEL_RPM = {0x06: 3880, 0x40: 4900}
-FULL, AUTO = 0x40, 0x80
+SVC = 'CpuPLFixSvc'
+TASK = r'\CpuPLFix'
+FAN_AUTO = 0x80
 STEP = 3
-DUR  = int(sys.argv[1]) if len(sys.argv) > 1 else 90
+
+# 本机实测标定（2026-10-20，scripts/风扇档位-20261020-073014.txt）
+LEVEL_RPM = {0x01: 2463, 0x02: 2865, 0x03: 3186, 0x04: 3160,
+             0x05: 3456, 0x06: 3861, 0x07: 4388, 0x40: 4900}
 
 
 def load_cpf():
-    mod_path = os.path.join(BASE, 'CpuPLFix.py')
-    if not os.path.isfile(mod_path):
-        sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见手册第八节' % BASE)
-    sys.path.insert(0, BASE)
-    spec = importlib.util.spec_from_file_location('cpf', mod_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    p = os.path.join(BASE, 'CpuPLFix.py')
+    if not os.path.isfile(p):
+        sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见手册 01' % BASE)
+    spec = importlib.util.spec_from_file_location('cpf', p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 
-class EC(object):
-    """ACPI EC 访问 —— 走 TSCtl 驱动的 I/O 端口(0x62/0x66)，协议同旧风扇工具"""
+def run(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        return None
 
-    def __init__(self, cpf):
-        self.cpf = cpf
 
-    def pio_read(self, port):
-        ok, b = self.cpf.ioctl(IOCTL_PORT_READ, struct.pack('<H', port), 1)
-        if not ok:
-            raise IOError('I/O 端口读 0x%04X 失败' % port)
-        return b[0] & 0xFF
+def stop_guard(say):
+    r = run(['sc', 'stop', SVC])
+    if r and r.returncode == 0:
+        say('  已停服务 %s' % SVC)
+    else:
+        msg = ''
+        if r:
+            msg = ((r.stderr or '') + (r.stdout or '')).strip()[:80]
+        say('  [!] 停服务失败（可能本来就没跑）%s' % ('：' + msg if msg else ''))
+    r = run(['schtasks', '/change', '/tn', TASK, '/disable'])
+    if r and r.returncode == 0:
+        say('  已禁用计划任务 %s' % TASK)
+    else:
+        say('  [!] 禁用计划任务失败（可能不存在）')
+    time.sleep(2.0)
 
-    def pio_write(self, port, val):
-        ok, _ = self.cpf.ioctl(IOCTL_PORT_WRITE,
-                               struct.pack('<H', port) + struct.pack('<B', val & 0xFF), 0)
-        if not ok:
-            raise IOError('I/O 端口写 0x%04X 失败' % port)
 
-    def _wait(self, want_set, want_clear, timeout_ms=1000):
-        deadline = time.time() + timeout_ms / 1000.0
-        while time.time() < deadline:
-            st = self.pio_read(CTRL_PORT)
-            if (st & want_set) == want_set and (st & want_clear) == 0:
-                return True
-            time.sleep(0.002)
-        return False
-
-    def _drain(self):
-        for _ in range(10):
-            if not (self.pio_read(CTRL_PORT) & FLAG_OBF):
-                break
-            self.pio_read(DATA_PORT)
-            time.sleep(0.001)
-
-    def read(self, offset):
-        self._drain()
-        if not self._wait(0, FLAG_IBF | FLAG_OBF):
-            raise IOError('EC 状态超时(读 0x%02X)' % offset)
-        self.pio_write(CTRL_PORT, CMD_READ)
-        if not self._wait(0, FLAG_IBF):
-            raise IOError('EC IBF 超时(读 0x%02X)' % offset)
-        self.pio_write(DATA_PORT, offset)
-        if not self._wait(0, FLAG_IBF):
-            raise IOError('EC IBF 超时(读 0x%02X)' % offset)
-        return self.pio_read(DATA_PORT)
-
-    def write(self, offset, value):
-        self._drain()
-        if not self._wait(0, FLAG_IBF | FLAG_OBF):
-            raise IOError('EC 状态超时(写 0x%02X)' % offset)
-        self.pio_write(CTRL_PORT, CMD_WRITE)
-        if not self._wait(0, FLAG_IBF):
-            raise IOError('EC IBF 超时(写 0x%02X)' % offset)
-        self.pio_write(DATA_PORT, offset)
-        if not self._wait(0, FLAG_IBF):
-            raise IOError('EC IBF 超时(写 0x%02X)' % offset)
-        self.pio_write(DATA_PORT, value & 0xFF)
-        if not self._wait(0, FLAG_IBF):
-            raise IOError('EC IBF 超时(写 0x%02X)' % offset)
-
-    def snapshot(self):
-        """返回 (EC 温度, HFSP, 转速)。
-
-        2026-10-18 实测: 读转速**不需要**写 0x31(=0)。本机 DSDT 里 0x31 的位是
-        HUWB(bit2)/VPON(bit6)/VRST(bit7), "写 0 选主风扇" 是老 X60 那代的做法;
-        实测 0x31 常驻 0x00 且写与不写读到的转速一样。所以这里一个字都不写。
-        """
-        t = self.read(EC_CPU_TMP)
-        f = self.read(EC_FAN)
-        lo = self.read(EC_RPM_LO)      # 必须先读低字节(固件 bug, thinkpad_acpi 记载)
-        hi = self.read(EC_RPM_HI)
-        return t, f, (hi << 8) | lo
+def start_guard(say):
+    run(['schtasks', '/change', '/tn', TASK, '/enable'])
+    r = run(['sc', 'start', SVC])
+    say('  已恢复服务与计划任务' if (r and r.returncode == 0) else '  [!] 启动服务失败，请手动 net start %s' % SVC)
 
 
 def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument('dur', nargs='?', type=int, default=90, help='满载秒数，默认 90')
+    ap.add_argument('--keep-service', action='store_true', help='不停看守服务（会污染 HFSP，不推荐）')
+    a = ap.parse_args()
+
     cpf = load_cpf()
     if not cpf.is_admin():
-        sys.exit('[X] 需要管理员权限（TSCtl 驱动设备只对管理员开放）。\n'
-                 '    请双击同目录的 12-风扇天花板实测.bat —— 它会自己弹 UAC 提权再跑。')
+        sys.exit('[X] 需要管理员权限。请双击同目录的 12-风扇天花板实测.bat（它会自己弹 UAC）。')
+    if not cpf.ensure_driver(verbose=False):
+        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见手册 01 §6）')
     if not os.path.isfile(BURN):
         sys.exit('[X] 同目录缺 _负载发生器.py')
-    if not cpf.ensure_driver(verbose=False):
-        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见手册第八节）')
 
     LOG = []
     OUT = os.path.join(HERE, '风扇天花板-%s.txt' % time.strftime('%Y%m%d-%H%M%S'))
@@ -168,165 +117,178 @@ def main():
         print(s, flush=True)
 
     say('=== 风扇天花板实测  %s ===' % time.strftime('%Y-%m-%d %H:%M:%S'))
-    ec = EC(cpf)
-
-    # ---- 端口通道自检 ----------------------------------------------------
     try:
-        st = ec.pio_read(CTRL_PORT)
-        say('EC 控制端口 0x66 读了 0x%02X —— I/O 端口通道正常' % st)
-    except Exception as exc:
-        say('[X] I/O 端口读写失败: %s' % exc)
-        say('    可能原因: 不是管理员 / TSCtl 驱动没起来 / 驱动不允许端口 I/O')
+        fw = ''.join(chr(cpf.ec_read_ok(0xF0 + i) or 63) for i in range(8))
+        say('EC 固件 = %s' % fw)
+    except Exception:
+        pass
+
+    # ---- 端口通道自检（用加固读法，失败就早退）--------------------------
+    t0 = cpf.ec_temp()
+    if t0 is None:
+        say('[X] EC 读不到温度 —— 驱动/端口不通，先跑 2-check 看驱动')
         open(OUT, 'w', encoding='utf-8').write('\n'.join(LOG) + '\n')
-        sys.exit(1)
+        return 1
+    say('EC 温度读到 %d°C —— 通道正常' % t0)
 
-    # ---- MSR 侧（温度/频率/功耗）----------------------------------------
-    u = cpf.rdmsr(0x606)
-    E_UNIT = 1.0 / (1 << ((u >> 8) & 0x1F)) if u else 6.104e-05
-    ta = cpf.rdmsr(0x1A2)
-    TJMAX = ((ta >> 16) & 0xFF) if ta else 100
-    if not (50 <= TJMAX <= 120):
-        TJMAX = 100
-
-    def cpu_temp():
-        return TJMAX - (((cpf.rdmsr(0x1B1) or 0) >> 16) & 0x7F)
-
-    def ratio():
-        return ((cpf.rdmsr(cpf.MSR_PERF_STATUS) or 0) >> 8) & 0xFF
-
-    def energy():
-        v = cpf.rdmsr(0x611)
-        return (v & 0xFFFFFFFF) if v is not None else None
-
-    say('TjMax=%d°C   energy unit=%.4f uJ/count' % (TJMAX, E_UNIT * 1e6))
-    say('（转速参考：0x06 档 ≈3880 RPM、0x40 满速 ≈4900 RPM；其余档位本机未标定）')
-    say()
-
-    # ---- 1. 空闲基线 -----------------------------------------------------
-    say('=== 空闲基线 ===')
-    for _ in range(3):
-        try:
-            t, f, r = ec.snapshot()
-            say('  EC温度=%3d°C  HFSP=0x%02X  RPM=%4d' % (t, f, r))
-        except Exception as exc:
-            say('  读取失败: %s' % exc)
-        time.sleep(2)
-
-    # ---- 2. 满载采样（不动风扇）-----------------------------------------
-    NCPU = os.cpu_count() or 8
-    say()
-    say('=== 满载 %d 秒（%d 线程，全程保持 EC 自动，不写风扇寄存器）===' % (DUR, NCPU))
-    say('%5s %8s %8s %8s %8s %7s %8s' % ('t(s)', '频率', 'CPU°C', 'EC°C', 'HFSP', 'RPM', '功耗W'))
-    procs = [subprocess.Popen([PY, BURN, str(DUR + 15)],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-             for _ in range(NCPU)]
-    time.sleep(1.5)
-
-    rows = []
-    e_prev, t_prev, t_start, n = energy(), time.time(), time.time(), 0
     try:
-        while time.time() - t_start < DUR + 1:
-            time.sleep(STEP)
-            n += 1
-            e_now, t_now = energy(), time.time()
-            w = -1.0
-            if e_now is not None and e_prev is not None:
-                w = ((e_now - e_prev) & 0xFFFFFFFF) * E_UNIT / max(1e-6, t_now - t_prev)
-            e_prev, t_prev = e_now, t_now
-            r = ratio()
-            ct = cpu_temp()
-            try:
-                et, f, rpm = ec.snapshot()
-            except Exception as exc:
-                say('%5d  （EC 读取失败: %s）' % (n * STEP, exc))
-                continue
-            rows.append((n * STEP, r, ct, et, f, rpm))
-            say('%5d %6.2fGHz %7d°C %7d°C   0x%02X %6d %8.1f'
-                % (n * STEP, r / 10.0, ct, et, f, rpm, w))
+        svc = run(['sc', 'query', SVC])
+        running = bool(svc and 'RUNNING' in (svc.stdout or ''))
+    except Exception:
+        running = False
+    if not a.keep_service:
+        if running:
+            say()
+            say('=== 停看守服务（否则它会不停改 0x2F，测到的不是原生曲线）===')
+            stop_guard(say)
+        else:
+            say('  （服务没在跑，直接测）')
+
+    restored = False
+    try:
+        # ★2026-10-20: 停服务后 MSR 侧可能被系统/BIOS 改回默认 —— 实测 07:41 那次
+        #   跑出 99°C、频率 3.0GHz 撑了 48 秒, 那是 **55W** 的表现, 不是 28W。
+        #   这里按 config 重新锁一次功耗墙, 让"原生风扇在 28W 下"这个条件可控。
+        try:
+            cfg_now = cpf.load_cfg()
+            cpf.ensure_profile(cfg_now)
+            v = cpf.rdmsr(0x610)
+            if v is not None:
+                d = cpf.decode_pl(v)
+                say('功耗墙(测试条件): MSR PL1=%.1fW PL2=%.1fW   config %.0f/%.0fW'
+                    % (d['pl1_w'], d['pl2_w'],
+                       float(cfg_now.get('pl1_w') or 0), float(cfg_now.get('pl2_w') or 0)))
+        except Exception as exc:
+            say('[!] 功耗墙对齐失败(结果可能不是 config 档): %s' % exc)
+
+        # ---- 把风扇交还 EC 自动 -----------------------------------------
+        cur = cpf.ec_hfsp()
+        say()
+        say('当前 HFSP = %s' % ('0x%02X' % cur if cur is not None else '读不到'))
+        if cur is not None and cur != FAN_AUTO:
+            if cpf.ec_write(0x2F, FAN_AUTO):
+                time.sleep(2.0)
+                back = cpf.ec_hfsp()
+                say('已写 0x80 交还 EC 自动，回读 %s' % ('0x%02X' % back if back is not None else '失败'))
+            else:
+                say('[!] 写 0x80 失败 —— 下面测到的可能不是原生曲线')
+
+        # ---- 1. 空闲基线 ------------------------------------------------
+        say()
+        say('=== 空闲基线 ===')
+        for _ in range(3):
+            t = cpf.ec_temp(); f = cpf.ec_hfsp(); r = cpf.ec_rpm()
+            say('  EC温度=%s°C  HFSP=%s  RPM=%s'
+                % ('%3d' % t if t is not None else ' --',
+                   '0x%02X' % f if f is not None else '--',
+                   '%4d' % r if r is not None else '----'))
+            time.sleep(2)
+
+        # ---- 2. 满载采样 ------------------------------------------------
+        n_cpu = os.cpu_count() or 8
+        say()
+        say('=== 满载 %d 秒（%d 线程，全程 EC 自动、不写风扇）===' % (a.dur, n_cpu))
+        say('%5s %8s %7s %7s %6s %7s' % ('t(s)', '频率', 'EC°C', 'DTS°C', 'HFSP', 'RPM'))
+        procs = [subprocess.Popen([PY, BURN, str(a.dur + 15)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                 for _ in range(n_cpu)]
+        time.sleep(1.5)
+
+        rows = []
+        t_start = time.time()
+        n = 0
+        try:
+            while time.time() - t_start < a.dur + 1:
+                time.sleep(STEP)
+                n += 1
+                et = cpf.ec_temp()
+                f = cpf.ec_hfsp()
+                rpm = cpf.ec_rpm()
+                dts = None
+                try:
+                    tv = cpf.cpf_read_thermal()
+                    dts = tv['temp'] if tv else None
+                except Exception:
+                    pass
+                ratio = None
+                try:
+                    v = cpf.rdmsr(cpf.MSR_PERF_STATUS)
+                    ratio = ((v or 0) >> 8) & 0xFF
+                except Exception:
+                    pass
+                rows.append((n * STEP, ratio, et, dts, f, rpm))
+                say('%5d %7s %7s %7s %6s %7s'
+                    % (n * STEP,
+                       '%.2fGHz' % (ratio / 10.0) if ratio else '--',
+                       '%d' % et if et is not None else '--',
+                       '%d' % dts if dts is not None else '--',
+                       '0x%02X' % f if f is not None else '--',
+                       '%d' % rpm if rpm is not None else '----'))
+        finally:
+            for pr in procs:
+                try:
+                    pr.kill(); pr.wait()
+                except Exception:
+                    pass
+
+        # ---- 3. 停载回落 ------------------------------------------------
+        say()
+        say('=== 停载后 ===')
+        for _ in range(3):
+            time.sleep(2)
+            t = cpf.ec_temp(); f = cpf.ec_hfsp(); r = cpf.ec_rpm()
+            say('  EC温度=%s°C  HFSP=%s  RPM=%s'
+                % ('%3d' % t if t is not None else ' --',
+                   '0x%02X' % f if f is not None else '--',
+                   '%4d' % r if r is not None else '----'))
+
+        # ---- 4. 汇总 ----------------------------------------------------
+        rpms = [r[5] for r in rows if r[5]]
+        ets = [r[2] for r in rows if r[2] is not None]
+        hfsp = sorted(set(r[4] for r in rows if r[4] is not None))
+        say()
+        say('=== 汇总（EC 自动模式）===')
+        if ets:
+            say('  满载 EC 最高温度 : %d°C' % max(ets))
+        if hfsp:
+            say('  满载 HFSP 取值   : %s' % ' '.join('0x%02X' % v for v in hfsp))
+        if rpms:
+            say('  满载最高转速     : %d RPM' % max(rpms))
+            hot = [r[5] for r in rows if r[5] and r[2] is not None and r[2] >= 80]
+            if hot:
+                say('  EC≥80°C 时最高转速: %d RPM' % max(hot))
+        else:
+            say('  [X] 一个转速都没采到 —— EC 读取全失败，看上面的报错')
+
+        say()
+        say('=== 结论 ===')
+        if not rpms:
+            say('  没数据，没法判读。先跑 2-check 确认 EC 能读。')
+        else:
+            mx = max(rpms)
+            lv, lv_rpm = min(LEVEL_RPM.items(), key=lambda kv: abs(kv[1] - mx))
+            if abs(lv_rpm - mx) > 500:
+                say('  原生最高 %d RPM，落在已知档位之外' % mx)
+            else:
+                say('  原生最高 %d RPM ≈ 档位 0x%02X（该档标定 %d RPM）' % (mx, lv, lv_rpm))
+            if mx < 4000:
+                say('  → 原生天花板在 6 档附近：到不了 7 档(4388)/满速(~4900)，')
+                say('    高负载时只能靠降频，风扇不会更响。')
+            elif mx < 4600:
+                say('  → 原生能到 7 档(4388)：比 6 档多 ~530 RPM。')
+            else:
+                say('  → 原生能接近真满速：问题不在天花板，在触发条件。')
     finally:
-        for pr in procs:
+        if not a.keep_service:
+            say()
+            say('=== 收尾 ===')
             try:
-                pr.kill()
-                pr.wait()
+                if cpf.ec_hfsp() != FAN_AUTO:
+                    cpf.ec_write(0x2F, FAN_AUTO)
             except Exception:
                 pass
-
-    # ---- 3. 负载停下后的回落 --------------------------------------------
-    say()
-    say('=== 停载后 ===')
-    for _ in range(3):
-        time.sleep(2)
-        try:
-            et, f, rpm = ec.snapshot()
-            say('  EC温度=%3d°C  HFSP=0x%02X  RPM=%4d' % (et, f, rpm))
-        except Exception as exc:
-            say('  读取失败: %s' % exc)
-
-    # ---- 汇总 -----------------------------------------------------------
-    auto_max = max([r[5] for r in rows], default=0)
-    hot = [r for r in rows if r[2] >= 80] or rows
-    hot_max = max([r[5] for r in hot], default=0)
-    hfsp_seen = sorted(set(r[4] for r in rows))
-    tmax = max([r[2] for r in rows], default=0)
-    say()
-    say('=== 汇总（EC 自动模式）===')
-    say('  满载 CPU 最高温度 : %d°C' % tmax)
-    say('  满载 HFSP 取值     : %s' % ' '.join('0x%02X' % v for v in hfsp_seen))
-    say('  满载最高转速       : %d RPM' % auto_max)
-    if hot:
-        say('  温度≥80°C 时最高转速: %d RPM' % hot_max)
-
-    # ---- 4. 可选标定：写 0x40 读真满速 -----------------------------------
-    calib_max = 0
-    say()
-    say('=== 可选标定：临时写 HFSP=0x40 把风扇拉到真满速 15 秒，然后写回 0x80 交还 EC ===')
-    try:
-        ans = input('  要标定吗？（会明显变吵，约 20 秒）[y/N] ').strip().lower()
-    except EOFError:
-        ans = ''
-    if ans == 'y':
-        try:
-            ec.write(EC_FAN, FULL)
-            say('  已写 0x40，等风扇升速 ...')
-            for i in range(6):
-                time.sleep(2.5)
-                et, f, rpm = ec.snapshot()
-                calib_max = max(calib_max, rpm)
-                say('    HFSP=0x%02X  RPM=%4d' % (f, rpm))
-        except Exception as exc:
-            say('  标定中出错: %s' % exc)
-        finally:
-            try:
-                ec.write(EC_FAN, AUTO)
-                say('  已写回 0x80，交还 EC 自动')
-            except Exception as exc:
-                say('  [!] 写回 0x80 失败: %s —— 风扇可能停在满速，重启即可恢复' % exc)
-    else:
-        say('  已跳过（未写任何风扇寄存器）')
-
-    # ---- 结论 -----------------------------------------------------------
-    say()
-    say('=== 结论 ===')
-    lv, lvrpm = min(LEVEL_RPM.items(), key=lambda kv: abs(kv[1] - auto_max))
-    if abs(lvrpm - auto_max) > 600:          # 落在已知档位之外（1~5/7 档未标定）
-        lv = lvrpm = None
-    if lv is None:
-        say('  自动模式满载最高 %d RPM（落在已知档位 0x06/0x40 之外；1~5/7 档未标定）' % auto_max)
-    else:
-        say('  自动模式满载最高 %d RPM ≈ 档位 0x%02X（该档实测 %d RPM）' % (auto_max, lv, lvrpm))
-    if calib_max:
-        say('  写 0x40 后实测最高 %d RPM（本机风扇真满速）' % calib_max)
-        gap = calib_max - auto_max
-        if gap <= 200:
-            say('  → 固件自己就能到满速（只低 %d RPM）：问题不在天花板，在触发条件' % gap)
-        else:
-            say('  → 自动曲线比真满速低 %d RPM：EC 自动模式到不了满速，要满速只能直接写 EC(0x40)' % gap)
-    else:
-        if lv == 0x06:
-            say('  → 停在 6 档附近，与"EC 自动天花板 ≈ 6 档（3880 RPM）"一致')
-        elif lv == 0x40:
-            say('  → 自动模式已经跑到满速档')
-        say('  （没做标定，真满速参考值用本机实测 ≈4900 RPM）')
+            start_guard(say)
+            restored = True
 
     open(OUT, 'w', encoding='utf-8').write('\n'.join(LOG) + '\n')
     print()
