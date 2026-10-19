@@ -17,6 +17,8 @@ scripts/CpuPLFix/
 scripts/EC体检-*.txt
 scripts/EC温度-*.txt
 scripts/EC风扇-*.txt
+scripts/EC总线实测-*.txt
+scripts/EC延时对照-*.txt
 
 # 就地备份文件（*.bak、*.bak-日期）不入库
 *.bak*

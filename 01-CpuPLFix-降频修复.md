@@ -69,7 +69,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | 看守服务 | `CpuPLFixSvc`（`Start=2`、`Type=16`） |
 | 计划任务 | `\CpuPLFix`（SYSTEM 身份；普通权限查不到，用日志确认它在跑） |
 | 日志 | `logs\fix.log`（只记事件、不记轮询；超 **2MB** 自动滚成 `fix.log.1`，只留一份）。`2-check` 只留一行摘要；`boot` 的触发标签是实测的；`logs\boot_last.txt` 是判断"到底睡没睡"的小状态文件（删了无副作用） |
-| 命令行入口 | 仓库里有 10 个 `.bat`；**部署目录只放 4 个**：`1-install` / `2-check` / `3-config` / `9-uninstall`（见 §5） |
+| 命令行入口 | 仓库里有 11 个 `.bat`；**部署目录放 4 个**：`1-install` / `2-check` / `3-config` / `9-uninstall`（见 §5）。⚠️ 2026-10-19 之前部署目录里**没有** `3-config.bat`（只有 3 个），已补上；仓库里那份原来因为找不到 `%~dp0runtime\python.exe` 也跑不起来（仓库只有 `runtime.zip`），已改成**回退到部署目录的 runtime** |
 
 `config.json` 主要键：
 
@@ -224,8 +224,8 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 > 每一项都有范围校验，写错只会报错、不会写盘（例如 `guard=95,90,...` 会被拒绝）。
 > 完整键名随时用 `3-config.bat help` 看。
 
-> **其余 6 个 bat**（`3-fix-now` / `4-风扇状态` / `5-风扇曲线` / `6-风扇满速` / `7-风扇交还EC自动` / `8-风扇固定档`）
-> 只在工具仓库里有，**部署目录故意没放**（平时用不到）。要临时用，直接调主程序：
+> **其余 7 个 bat**（`3-fix-now` / `4-风扇状态` / `5-风扇曲线` / `6-风扇满速` / `7-风扇交还EC自动` /
+> `8-风扇固定档` / `部署并重启`）只在工具仓库里有，**部署目录故意没放**（平时用不到）。要临时用，直接调主程序：
 >
 > ```bat
 > %APPDATA%\CpuPLFix\runtime\python.exe %APPDATA%\CpuPLFix\CpuPLFix.py fan status
@@ -308,6 +308,10 @@ git checkout <sha> -- CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py
 copy CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py %APPDATA%\CpuPLFix\
 sc.exe stop CpuPLFixSvc & sc.exe start CpuPLFixSvc     # 必须重启服务（被 import）
 ```
+
+> **一键版（2026-10-19 起）**：在 `%APPDATA%\_repo` 里双击 **`部署并重启.bat`** —— 它自己提权，
+> 先打印仓库与部署目录两边 `CpuPLFix.py` 的 SHA256 做比对，再复制、删 `__pycache__`、
+> `net stop/start CpuPLFixSvc`，最后打 `sc query` + 日志尾 14 行。**不提交 git，也不碰 `config.json`。**
 
 > ⚠️ **`%APPDATA%\CpuPLFix\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
 > 就在几十分钟内被别的进程清掉了（当时 WorkBuddyAI 在跑）。要留档就进 git。
