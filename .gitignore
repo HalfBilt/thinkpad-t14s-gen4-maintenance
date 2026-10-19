@@ -5,6 +5,7 @@ scripts/体检报告-*.txt
 scripts/性能自检-*.txt
 scripts/满载温度-*.txt
 scripts/风扇天花板-*.txt
+scripts/风扇档位-*.txt
 
 # Python 字节码缓存
 __pycache__/
