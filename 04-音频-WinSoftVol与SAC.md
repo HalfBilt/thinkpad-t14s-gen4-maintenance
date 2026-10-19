@@ -91,7 +91,7 @@ Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operati
 
 ## 现状与回滚
 
-| 项目 | 现状（2026-10-18） | 回滚 |
+| 项目 | 现状（2026-10-19） | 回滚 |
 |---|---|---|
 | WinSoftVol | ✅ `.sys` 在、服务 **RUNNING**、MEDIA `UpperFilters = ksthunk,WinSoftVol` | `scripts\07-卸载WinSoftVol.ps1` → 重启（音量条退回"无效"） |
 | 智能应用控制（SAC） | ⚠️ **已关（不可逆）**；5 个音频设备 code=0、代码完整性日志 0 条拦截 | 无法回滚，只能重装系统 |
