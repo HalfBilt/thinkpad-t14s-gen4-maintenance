@@ -106,11 +106,14 @@ def main():
     for i in range(0, len(line), 6):
         w('    ' + '  '.join(line[i:i + 6]))
     w('  不稳定被剔除的: %s' % (['0x%02X' % o for o in uniq if truth[o] is None] or '无'))
+    w('  ※ 真值表只取一次: 温度/档位/电池这类寄存器在这 ~70 秒里本来就会变(实测 20:00 那次')
+    w('    0x2F 就在 12ms 那一档被服务从 02 改成 06), 那部分会被算进"B 组其它错" ——')
+    w('    所以**绝对值偏高**, 只有随 delay 的**趋势**可信。')
     usable = [o for o in uniq if truth[o] is not None]
 
     # ---- 1. 各 delay 下的 A/B/C 三组对照 ----
     sec('1. 各 delay 下的受控对照（同一批寄存器，settle 全程钉在 1ms）')
-    w('  delay    A:同寄存器不一致    B:X的值冒充Y    C:哨兵挡住   单次事务')
+    w('  delay    A:同寄存器不一致    B:X的值冒充Y    C:哨兵通过   单次事务')
     w('  -------  -----------------  -------------  -----------  ---------')
     rows = []
     for d in DELAYS:
@@ -158,24 +161,30 @@ def main():
              b_fake, b_n, 100.0 * b_fake / b_n, c_ok, c_n, 100.0 * c_ok / c_n, ms))
 
     sec('2. 汇总')
-    w('  delay    A 组不一致   B 组被冒充   B 组读对   C 组哨兵挡住')
+    w('  delay    A 组不一致   B 组被冒充   B 组其它错   B 组读对   C 组哨兵通过')
     best = None
     for (d, a_bad, a_n, b_fake, b_ok, b_other, b_n, c_ok, c_n, ms) in rows:
         pa = 100.0 * a_bad / max(1, a_n)
         pb = 100.0 * b_fake / max(1, b_n)
+        po = 100.0 * b_other / max(1, b_n)
         pk = 100.0 * b_ok / max(1, b_n)
         pc = 100.0 * c_ok / max(1, c_n)
-        w('  %-7s  %6.1f%%       %6.1f%%       %6.1f%%     %6.1f%%'
-          % ('%.0f ms' % (d * 1000), pa, pb, pk, pc))
-        if best is None or pb < best[1]:
-            best = (d, pb, pa, pk, pc)
+        w('  %-7s  %6.1f%%       %6.1f%%       %6.1f%%       %6.1f%%     %6.1f%%'
+          % ('%.0f ms' % (d * 1000), pa, pb, po, pk, pc))
+        # ★2026-10-19: 原来按"B 组被冒充率"取最小。可 1ms/3ms/6ms 三次都是 0.0% —— 并列时
+        #   取先遇到的那个, 于是"最佳 delay ≈ 1 ms"纯粹是排序副产品(20:00 那次就是这样),
+        #   而真正的错全落在"其它错"里。改成按"B 组读错(冒充+其它)"最小选。
+        wrong = pb + po
+        if best is None or wrong < best[1]:
+            best = (d, wrong, pa, pk, pc)
     w('')
-    w('  最佳 delay ≈ %.0f ms（B 组被冒充 %.1f%%，A 组不一致 %.1f%%，B 组读对 %.1f%%）'
-      % (best[0] * 1000, best[1], best[2], best[3]))
+    w('  最佳 delay ≈ %.0f ms（B 组读错 %.1f%%，A 组不一致 %.1f%%，B 组读对 %.1f%%，哨兵通过 %.1f%%）'
+      % (best[0] * 1000, best[1], best[2], best[3], best[4]))
     w('  判读：')
     w('   · B 组被冒充率 >> A 组不一致率  → 证实"撞车读到的是上一次事务的字节"')
-    w('   · B 组被冒充率随 delay 单调上升 → 证实"等得越久越容易撞车"（自适应等待帮倒忙）')
+    w('   · B 组读错率随 delay 上升 → 证实"等得越久越容易撞车"（自适应等待帮倒忙）')
     w('   · 若两者都不成立 → 我上一条的推断错了，得换方向重新查')
+    w('   · ★相邻两档只差 ≤3 个事件 = 打平, 别据此改参数(每档 150 次只够看趋势)')
 
     sec('3. 本次测量里"错值"的分布（看是不是温度量级的数）')
     c = Counter()
