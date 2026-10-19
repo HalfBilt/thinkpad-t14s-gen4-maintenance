@@ -133,7 +133,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段一致
 (Get-Item "$env:APPDATA\CpuPLFix\TSCtl.sys").Length       # 50216
 (Get-Item "$env:APPDATA\CpuPLFix\config.json").Length     # 1574（2026-10-19；空格/换行会影响，只作参考）
-(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 105294（2026-10-19，随版本变）
+(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 117184（2026-10-19，随版本变）
 (Get-Item "$env:APPDATA\CpuPLFix\CpuPLFixSvc.py").Length  # 10557（随版本变）
 ```
 
@@ -285,8 +285,16 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
   ④ 新增电池链路看门狗（`GetSystemPowerStatus` 的 `BatteryFlag=128/255`，`03` §9）；
   ⑤ 新增风扇档回读校验（`_fan_ok()`）与 `fan.min_dwell_s`（默认 60 秒，只压降温降档，`02` §2）；
   ⑥ `2-check` 新增"电池链路"与"版本一致性"两行；`3-config` 新增 `hold=` / `dwell=`。
-  回滚：把 `%APPDATA%\CpuPLFix\*.bak-20261019-1030` 覆盖回去，然后 `sc.exe stop/start CpuPLFixSvc`
-  （**改了 `CpuPLFix.py` 必须重启服务**，因为它被服务 import）。`_repo` 侧已提交 `4b5cbad`。
+  **回滚（2026-10-19 下午起以 git 为准）**：`%APPDATA%\_repo` 是工具仓库，改前改后的每一版都在里面 ——
+  `214e0ca` = 本次改动前的原版；`4b5cbad`/`8a2f931`/`bf989d4` = 10-19 的三次修改。
+  ```bash
+  cd %APPDATA%\_repo && git checkout 214e0ca -- CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py
+  copy CpuPLFix.py %APPDATA%\CpuPLFix\ && copy CpuPLFixCfg.py %APPDATA%\CpuPLFix\ 
+  sc.exe stop CpuPLFixSvc & sc.exe start CpuPLFixSvc      # 必须重启服务(被 import)
+  ```
+  ⚠️ **`%APPDATA%\CpuPLFix\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
+  就在几十分钟内被别的进程清掉了（当时 WorkBuddyAI 在跑）。要留档就进 git，或另存到桌面。
+  跑之前/之后都用 `2-check.bat` 的 **版本一致性** 那一行确认"跑着的就是仓库里那份"。
 - **2026-10-18 改过 `CpuPLFix.py`**（不含在上面"三种情况"里，**不用重启服务** —— 服务不调用这几处，
   而 `boot`/`check` 每次都是新进程，改完立即生效）：
   ① `ec_rpm()` 去掉了"读转速前写 `0x31=0`"（本机 `0x31` 是 `HUWB`/`VPON`/`VRST`，不是老 X60 那代的"选风扇"；
