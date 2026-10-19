@@ -264,7 +264,7 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 `2-check.bat` 跑完只在日志里留**一行摘要**：
 
 ```
-[*] 手动体检: AC  MSR PL1=28.00W PL2=55.00W  倍频 41  EC温度 63°C  DTS 75°C  风扇 6 档(约 3490 RPM) 3875RPM  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
+[*] 手动体检: AC  MSR PL1=28.00W PL2=55.00W  倍频 41  EC温度 63°C  DTS 75°C  风扇 6 档(约 3880 RPM) 3875RPM  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
 ```
 
 > 标志读失败时那一格显示 `--`（**不是** `0x00`）—— 这两件事必须分清，见 `02` §3.1。
@@ -297,7 +297,19 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 - **需要重启的三种情况**：① `mmio_mode` 在 disable/value 间切换；② value 模式升档超过已锁值；
   ③ 手动想改被锁死的 MMIO 寄存器。**改配置不用重启；改 `.py` 代码要重启服务**（服务把主程序 import 进去了）。
 - 与联想/Intel 自家工具**不冲突**（Vantage、Intel IPF、Intel DTT、Windows 电源计划全走用户态 WMI/ACPI/EPP）；
-  但 **ThrottleStop / XTU / QuickCPU 没装就别装**（会和它抢寄存器）。
+  但 **ThrottleStop / XTU / QuickCPU 会和它抢寄存器**，本机**已经装了 ThrottleStop 9.7 且常用**，
+  另外还装了 **HWiNFO**（2026-10-19 确认）。都能用，只要避开这几种叠法：
+  - **HWiNFO 会周期性读 EC 端口**（打开 EC 支持时），它正是 `03` §4 里"别的主控插进来"的一个来源。
+    现在本服务每个事务会**同时拿 `Global\Access_EC`**（HWiNFO 用的那把行业通用锁），所以装着
+    HWiNFO 也不影响读数正确性，只是每次事务要等它让一下（毫秒级）。
+  - **别用 ThrottleStop / HWiNFO 自带的"风扇控制"** —— 它们会直接和我们写 `EC 0x2F` 打架，
+    表现为档位来回跳。
+  - **ThrottleStop 改 MSR 时别和 `mmio_lock` / PL 写入叠着用**：它退出或重开时可能把
+    `MSR 0x610` 还原（取决于它的设置），我们下一轮会再写回去 —— 这类"改完又变回去"先在
+    `2-check` 里看 `MSR 0x610` 和日志两处，不要急着判成服务失效。
+  - **两边用的是同一个 `TSCtl.sys` 驱动**（本工具就是从 ThrottleStop 里提取的）。如果 ThrottleStop
+    启动后本服务突然开始报端口类错误，先看 `TSCtl` 服务状态（`sc query TSCtl`）—— 这条还没实测过，
+    只作为排查方向。
 
 **回滚：以 git 为准**
 
