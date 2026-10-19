@@ -107,9 +107,9 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `guard.crit_hold_s` / `step_dwell_s` / `ramp_step_s` | `10` / `15` / `30` | 驻留 / 每级加深 / 每级回升 |
 | `guard.crit_now_c` | `100` | 单次到它就立即进严重档（= TjMax） |
 | `guard.flag_pl1_w` / `flag_pl2_w` | `20` / `28` | 固件标志锁存档 |
-| `guard.trip_hold_s` | `45` | 标志锁存判定秒数（0 = 关掉这条出口） |
+| `guard.trip_hold_s` | `45` | **兼容键**：旧版代码拿它当锁存判定秒数；现版实际读 `flag_release_s`（`3-config.bat hold=` 会同时写这两个键）。0 = 关掉这条出口 |
 | `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。`3-config.bat tpower=on/off`（`02` §4.5） |
-| `guard.flag_release_c` / `flag_release_s` | `95` / `60` | 温度连续正常这么久 → 判锁存、放开 |
+| `guard.flag_release_c` / `flag_release_s` | `97` / `60` | 温度连续 ≤97°C 满 60 秒 → 判锁存、放开（97 低于 `crit_c`=98，高于满载稳态 89~95） |
 | `guard.min_hold_s` / `release_dwell_s` | `30` / `10` | 防保护档来回切 |
 | `guard.cool_tail_s` | `30` | 退出保护后继续满速 |
 | `guard.escape_hibernate` | `false` | **不做**主动休眠 |
@@ -139,8 +139,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 3-config.bat step_dwell=15
 3-config.bat ramp=30
 3-config.bat flag_pl=20,28
-3-config.bat hold=45
-3-config.bat flag_rel=95,60
+3-config.bat hold=60
+3-config.bat flag_rel=97,60
 3-config.bat gmin=30
 3-config.bat rel=10
 3-config.bat cool_tail=30
