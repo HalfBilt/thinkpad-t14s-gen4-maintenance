@@ -113,7 +113,10 @@ W ("  虚拟机监控程序存在: {0}" -f (Get-CimInstance Win32_ComputerSystem
 W ""
 W "---- 8) 电池 / 硬盘 ----"
 $bat = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
-if ($bat) { W ("  电量: {0}%   电池状态码: {1}（2=接电源）" -f $bat.EstimatedChargeRemaining, $bat.BatteryStatus) }
+if ($bat) { W ("  电量: {0}%   电池状态码: {1}（2=接电源）" -f $bat.EstimatedChargeRemaining, $bat.BatteryStatus)
+if (-not $bat.EstimatedChargeRemaining -or [string]::IsNullOrWhiteSpace($bat.Name)) {
+    W "  [X] 电池读数无效（ACPI 返回 0xFFFFFFFF，界面会显示 -1）—— 处置: 关机 -> 拔适配器 -> 长按电源 30 秒 -> 插回开机（手册 03 §9）"
+} }
 Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
     W ("  磁盘: {0} | {1} | {2}" -f $_.FriendlyName, $_.MediaType, $_.HealthStatus)
 }
@@ -176,7 +179,7 @@ W ("  TSCtl 驱动服务       : {0}" -f $(if ($tsCtl) { "$($tsCtl.Status) / $($
 
 # 10.2 当前电源档位（对得上 config.json 的 40/64 与 28/55）
 $onAC = ((Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue).BatteryStatus -eq 2)
-W ("  当前电源 / 档位      : {0}" -f $(if ($onAC) { '接电源 AC（应 40/64W）' } else { '电池（应 28/55W）' }))
+W ("  当前电源 / 档位      : {0}" -f $(if ($onAC) { '接电源 AC（应 40/55W）' } else { '电池（应 20/28W）' }))
 
 # 10.3 日志最近一次记录（非管理员查不到计划任务，用日志确认它在跑）
 $logPath = Join-Path $env:APPDATA 'CpuPLFix\logs\fix.log'

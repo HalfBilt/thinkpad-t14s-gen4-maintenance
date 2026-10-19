@@ -134,7 +134,7 @@ TEMPS = {
 # 2026-10-18 实测更正：
 #   · 真正会让 \_TZ.THM0._TMP 返回 _HOT/_CRT 的只有 0x89/0x8A/0x8B —— 就是下面这三个。
 #   · 0x88(TSL0/TSR0) **不**参与 _TMP 判据（只在 _WAK/_Q40 里被读来挑热表），
-#     本机它常驻 0x40(bit6)，属正常，别当"过热"。
+#     本机实测 2026-10-18 是 0x40(bit6)、2026-10-19 断电复位后是 0x00 —— 会变，别当"过热"。
 TRIP_FLAGS = (0x89, 0x8A, 0x8B)
 TRIP_EXTRA = 0x88
 
@@ -418,7 +418,7 @@ def findings(res):
                    % ' '.join('0x%02X' % o for o in tsr))
     e88 = v(TRIP_EXTRA)
     if e88 is not None and (e88 & 0x7F):
-        out.append('· 0x88 TSL0=0x%02X 有位置起来 —— **这不参与 _TMP 判据**，本机常驻 0x40(bit6) 属正常，'
+        out.append('· 0x88 TSL0=0x%02X 有位置起来 —— **这不参与 _TMP 判据**，属正常现象（它只在 _WAK/_Q40 里被用来挑热表），'
                    '只有 _WAK/_Q40 会拿它挑热表' % e88)
     elif e88 is None:
         out.append('! 0x88 读不到')
@@ -460,8 +460,12 @@ def findings(res):
     ver = ec_version_text(res)
     if ver is None:
         out.append('! EC 固件版本(0xF0~0xF7) 读不出来 —— 这几个字节不是可打印 ASCII 了')
-    elif ver != EC_VER_BASELINE:
+    elif ver.lower() != EC_VER_BASELINE.lower():
         out.append('! EC 固件版本读到 %s，基线是 %s —— 固件被换过 / EC 被重置过？'
+                   % (ver, EC_VER_BASELINE))
+    elif ver != EC_VER_BASELINE:
+        out.append('· EC 固件版本 %s 与基线 %s 只差大小写 —— 视为一致'
+                   '（0xF7 实测是小写 0x77，不是基线里记的 0x57）'
                    % (ver, EC_VER_BASELINE))
 
     if not out:
@@ -529,7 +533,8 @@ def cmd_dump(cpf, skip_smbus=True):
     ver = ec_version_text(res)
     say('  EC 固件版本 (0xF0~0xF7)  : %s%s'
         % (ver or '读不到',
-           '' if (ver is None or ver == EC_VER_BASELINE) else '   [!] 基线是 %s' % EC_VER_BASELINE))
+           '' if (ver is None or ver.lower() == EC_VER_BASELINE.lower())
+           else '   [!] 基线是 %s' % EC_VER_BASELINE))
     t0v = res.get(0x78, (None, False))[0]
     say('  CPU 温度 (0x78 TMP0)      : %s' % ('--' if t0v is None else '%d°C' % t0v))
     others = []
@@ -548,7 +553,8 @@ def cmd_dump(cpf, skip_smbus=True):
     say('  固件热触发标志(会强制休眠) : %s' % (' '.join(trip) if trip else '全 0（正常）'))
     v88 = res.get(TRIP_EXTRA, (None, False))[0]
     say('  0x88 TSL0(不参与该判据)     : %s'
-        % ('0x%02X %s（本机常驻 0x40/bit6，正常）' % (v88, bits_str(0x88, v88))
+        % ('0x%02X %s（不参与 _TMP 判据；2026-10-19 断电复位后实测 0x00，不是常驻的 0x40）'
+           % (v88, bits_str(0x88, v88))
            if v88 is not None else '读不到'))
     say('  风扇档位 (0x2F HFSP)      : %s' % describe(0x2F, res.get(0x2F, (None, False))[0]))
     lo, hi = res.get(0x84, (None, False))[0], res.get(0x85, (None, False))[0]

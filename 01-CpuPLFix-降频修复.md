@@ -103,7 +103,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
     "mode": "curve",
     "level": 0,
     "curve": [[56, 2], [79, 6], [999, 64]],
-    "hyst": 5.0
+    "hyst": 5.0,
+    "min_dwell_s": 60.0
   },
   "guard": {
     "enabled": true,
@@ -119,6 +120,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
     "flag_hot_c": 85.0,
     "force_fan_max": true,
     "trip_flags": true,
+    "trip_hold_s": 180.0,
     "escape_hibernate": false
   },
   "comment": "本机实用配置。插电(AC): PL1=40W PL2=55W; 电池: PL1=20W PL2=28W(省电优先)。两条线的功率是一套: 温控档 = 插电档的 50%(20/28) 与 25%(10/14), 顶统一 55W(固件原厂值)。mmio_mode=disable: 开机把固件侧 MMIO 清零+锁, 之后只写 MSR, 改配置/拔插电免重启。poll_s/ec_poll_s/flag_poll_s = 主循环/EC读/固件标志读的间隔秒数(EC 是慢总线, 默认 5/15/30 秒; 开机前 5 分钟、过热保护期间、EC 温度超过 guard.flag_hot_c 时自动加密)。fan=风扇模式与温度曲线; guard=过热保护阈值(0x78 温度线 + EC 0x89/0x8A/0x8B 固件标志线, 详见 说明.txt)。"
@@ -130,8 +132,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 ```powershell
 Get-Content "$env:APPDATA\CpuPLFix\config.json" -Raw      # 应与上面那段一致
 (Get-Item "$env:APPDATA\CpuPLFix\TSCtl.sys").Length       # 50216
-(Get-Item "$env:APPDATA\CpuPLFix\config.json").Length     # 1587（空格/换行会影响，只作参考）
-(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 83772（随版本变）
+(Get-Item "$env:APPDATA\CpuPLFix\config.json").Length     # 1574（2026-10-19；空格/换行会影响，只作参考）
+(Get-Item "$env:APPDATA\CpuPLFix\CpuPLFix.py").Length     # 105294（2026-10-19，随版本变）
 (Get-Item "$env:APPDATA\CpuPLFix\CpuPLFixSvc.py").Length  # 10557（随版本变）
 ```
 
@@ -175,10 +177,15 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 
 ```
 1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
-2-check.bat          看状态：电源/档位、两份功耗墙、频率、温度、固件过热标志、风扇档位/转速/EC 温度 + 曲线 + 保护档
-3-config.bat         命令行改配置：ac= / batt= / fan= / guard= …（不带参数 = 看当前值）
+2-check.bat          看状态：电源/档位、电池链路、版本一致性、两份功耗墙、频率、温度、
+                     固件过热标志、风扇档位/转速/EC 温度 + 曲线 + 保护档
+3-config.bat         命令行改配置：ac= / batt= / fan= / guard= / hold= / dwell= …（不带参数 = 看当前值）
 9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
 ```
+
+> **2026-10-19 起 `2-check` 多两行**：`电池(系统侧)/电池(EC 0x38)/电池充电阈值`（`03` §9）与
+> `版本一致性`（跑着的 `CpuPLFix.py` 与 `%APPDATA%\_repo` 那份的 SHA256 前 12 位）——
+> 后者是给"**跑的代码不是磁盘上的代码**"那类事故准备的（当天真踩过）。
 
 > `3-config.bat` **只改 `config.json`**：不碰硬件、不用管理员、跑完就退出，不常驻任何进程。
 > 保存后看守服务 ≤60 秒自动重读；上一版自动存成 `config.json.bak`，改错了一条命令退回。
@@ -270,6 +277,16 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 - 开了**内存完整性（HVCI）**时可能拒绝加载这类直接访问物理内存的驱动（本机是关的）。
 - **需要重启的三种情况**：① `mmio_mode` 在 disable/value 间切换；② value 模式升档超过已锁值；
   ③ 手动想改被锁死的 MMIO 寄存器。**改配置不用重启；改代码要重启服务。**
+- **2026-10-19 改过 `CpuPLFix.py` / `CpuPLFixCfg.py`**（三个真 bug + 五项防护，全部离线断言 + 实机验证）：
+  ① `guard.trip_hold_s`（默认 180 秒）—— `0x89` 被固件锁存时不再把 PL1 钉在 10W（`02` §3.1）；
+  ② `cmd_boot()` **按原因让位**：服务正在压保护档（EC > `recover_c` 或标志置位）时不介入，
+  修掉服务与计划任务 4 分钟互改 41 次的打架（`02` §4.2）；
+  ③ 温度跳变被当可疑值时，下一轮 EC 读提前到 `EC_JUMP_RETRY_S`(2 秒)，修 15 秒轮询下"沿用上一轮"白等一轮（`02` §7）；
+  ④ 新增电池链路看门狗（`GetSystemPowerStatus` 的 `BatteryFlag=128/255`，`03` §9）；
+  ⑤ 新增风扇档回读校验（`_fan_ok()`）与 `fan.min_dwell_s`（默认 60 秒，只压降温降档，`02` §2）；
+  ⑥ `2-check` 新增"电池链路"与"版本一致性"两行；`3-config` 新增 `hold=` / `dwell=`。
+  回滚：把 `%APPDATA%\CpuPLFix\*.bak-20261019-1030` 覆盖回去，然后 `sc.exe stop/start CpuPLFixSvc`
+  （**改了 `CpuPLFix.py` 必须重启服务**，因为它被服务 import）。`_repo` 侧已提交 `4b5cbad`。
 - **2026-10-18 改过 `CpuPLFix.py`**（不含在上面"三种情况"里，**不用重启服务** —— 服务不调用这几处，
   而 `boot`/`check` 每次都是新进程，改完立即生效）：
   ① `ec_rpm()` 去掉了"读转速前写 `0x31=0`"（本机 `0x31` 是 `HUWB`/`VPON`/`VRST`，不是老 X60 那代的"选风扇"；
