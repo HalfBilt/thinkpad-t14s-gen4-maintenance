@@ -108,6 +108,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `guard.crit_now_c` | `100` | 单次到它就立即进严重档（= TjMax） |
 | `guard.flag_pl1_w` / `flag_pl2_w` | `20` / `28` | 固件标志锁存档 |
 | `guard.trip_hold_s` | `45` | 标志锁存判定秒数（0 = 关掉这条出口） |
+| `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。`3-config.bat tpower=on/off`（`02` §4.5） |
 | `guard.flag_release_c` / `flag_release_s` | `95` / `60` | 温度连续正常这么久 → 判锁存、放开 |
 | `guard.min_hold_s` / `release_dwell_s` | `30` / `10` | 防保护档来回切 |
 | `guard.cool_tail_s` | `30` | 退出保护后继续满速 |
