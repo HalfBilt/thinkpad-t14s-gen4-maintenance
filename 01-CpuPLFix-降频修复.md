@@ -85,6 +85,9 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 ### 3.1 本机配置（重装后唯一要补回来的东西）
 
 **仓库里那份 `config.json` 就是本机实用值**（每次改完都同步提交），重装时直接拿仓库的即可。
+（2026-10-19 核对：实机 `%APPDATA%\CpuPLFix\config.json` 与仓库那份**逐字节一致**。
+唯一会漂的是 `fan.level` —— 跑过 `fan level N` 之后它会留在配置里；`fan.mode=curve` 时它
+是**无效值**，但要让两边保持一致就把它改回 `0`。）
 下面是"哪些值和默认不一样"的清单，用来核对：
 
 | 键 | 本机值 | 说明 |
@@ -300,8 +303,13 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
   但 **ThrottleStop / XTU / QuickCPU 会和它抢寄存器**，本机**已经装了 ThrottleStop 9.7 且常用**，
   另外还装了 **HWiNFO**（2026-10-19 确认）。都能用，只要避开这几种叠法：
   - **HWiNFO 会周期性读 EC 端口**（打开 EC 支持时），它正是 `03` §4 里"别的主控插进来"的一个来源。
-    现在本服务每个事务会**同时拿 `Global\Access_EC`**（HWiNFO 用的那把行业通用锁），所以装着
-    HWiNFO 也不影响读数正确性，只是每次事务要等它让一下（毫秒级）。
+    现在本服务每个事务会**同时拿 `Global\Access_EC`**（HWiNFO / AIDA64 / LibreHardwareMonitor
+    用的那把行业通用锁），所以装着 HWiNFO 也不影响读数正确性，只是每次事务要等它让一下（毫秒级）。
+    > ⚠️ **2026-10-19 复核：上面这句当时是"想当然"** —— 命名互斥体默认继承**创建者**的 DACL，
+    > 而服务以 SYSTEM 身份创建 → HWiNFO（用户身份）**根本开不了那把锁**，"同行锁"等于没有，
+    > HWiNFO 也可能因此开不了自己的锁。**已修**（显式给 Everyone 的 DACL）。
+    > 但"HWiNFO 到底用不用 `Global\Access_EC` 这个名字"**本机仍未实测**（HWiNFO 一次没开过），
+    > 所以这条只能当"机制上成立、待实测"，别当既成事实。`06` §4 第 7 项就是这条。
   - **别用 ThrottleStop / HWiNFO 自带的"风扇控制"** —— 它们会直接和我们写 `EC 0x2F` 打架，
     表现为档位来回跳。
   - **ThrottleStop 改 MSR 时别和 `mmio_lock` / PL 写入叠着用**：它退出或重开时可能把

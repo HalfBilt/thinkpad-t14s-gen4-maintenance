@@ -233,22 +233,21 @@ def read_batch(cpf, offsets, tries=2, pace=0.0):
     重则把系统的 EC 通道搞乱。全表扫描用 0.025 秒，600 次事务摊到 ~15 秒，稳当得多。
     """
     res = {}
-    locked = cpf._ec_lock(8000)
-    try:
-        for idx, off in enumerate(offsets):
-            vals = []
-            for i in range(tries):
-                vals.append(cpf.ec_read(off, _locked=True, delay=DELAYS[min(i, len(DELAYS) - 1)]))
-            good = [v for v in vals if v is not None]
-            if not good:
-                res[off] = (None, False)
-            else:
-                v, n = Counter(good).most_common(1)[0]
-                res[off] = (v, n == tries)
-            if pace and idx + 1 < len(offsets):
-                time.sleep(pace)
-    finally:
-        cpf._ec_unlock(locked)
+    # ★2026-10-19 复核: 原来这里**整批持锁**(240 个偏移摊 8~15 秒), 会把看守服务的 EC 读
+    #   饿死(服务等锁 3 秒超时 -> 退化成无锁, 反而更容易撞车)。改成**每笔事务自己加锁**:
+    #   一笔事务期间互斥, 事务之间给服务让出机会 —— 和 14/15 号脚本的做法一致。
+    for idx, off in enumerate(offsets):
+        vals = []
+        for i in range(tries):
+            vals.append(cpf.ec_read(off, delay=DELAYS[min(i, len(DELAYS) - 1)]))
+        good = [v for v in vals if v is not None]
+        if not good:
+            res[off] = (None, False)
+        else:
+            v, n = Counter(good).most_common(1)[0]
+            res[off] = (v, n == tries)
+        if pace and idx + 1 < len(offsets):
+            time.sleep(pace)
     return res
 
 
