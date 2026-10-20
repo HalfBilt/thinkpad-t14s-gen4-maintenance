@@ -97,7 +97,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `mmio_mode` / `lock_mmio` | `disable` / `true` | 固件侧清零 + 锁，之后只写 MSR |
 | `poll_s` / `ec_poll_s` / `flag_poll_s` / `flag_poll_slow_s` | `5` / `15` / `30` / `120` | 见 `02` §7 |
 | `fan.mode` | `curve` | 用自定义曲线，不用 EC 原生平线 |
-| `fan.curve` / `fan.hyst` | `[[56,2],[79,6],[999,64]]` / `5.0` | ≤55°C 2 档 / 56~78°C 6 档 / ≥79°C 满速 |
+| `fan.curve` / `fan.hyst` | `[[56,2],[79,6],[85,7],[999,64]]` / `5.0` | ≤55°C 2 档 / 56~78°C 6 档 / 79~84°C 7 档 / ≥85°C 满速。**当前 `fan.enabled=false`，曲线未启用** |
 | `fan.min_dwell_s` / `fan.min_write_gap_s` | `60` / `10` | 降档驻留 / 非紧急写入间隔 |
 | `fan.load_boost_pct/s/level` / `fan.load_hold_s` | `70` / `10` / `64` / `30` | 负载前馈：占用 ≥70% 满 10 秒 → 满速，落下后再吹 30 秒 |
 | `fan.dts_max_c` | `92` | DTS 前馈：核心到 92°C 立刻满速 |
