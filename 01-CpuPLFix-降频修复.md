@@ -80,14 +80,13 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `mmio_mode` | `disable`（本机在用）开机把固件侧 MMIO 清零 + 锁死，之后**只写 MSR**，改配置免重启；`value`（老方案）写目标值进 MMIO + 锁，改配置要重启 |
 | `poll_s` / `ec_poll_s` / `flag_poll_s` | 轮询节奏（秒）：主循环 / EC 读 / 固件标志读 —— 见 `02` §7 |
 | `flag_poll_slow_s` | 凉机时标志读放慢到这么多秒（默认 120） |
-| `fan` / `guard` | 风扇曲线 / 过热保护阈值 —— 全部在 `02` |
+| `guard` | 过热保护阈值 —— 见 `02` §4（**风扇已拆出，本工具没有 `fan` 段**） |
 
 ### 3.1 本机配置（重装后唯一要补回来的东西）
 
 **仓库里那份 `config.json` 就是本机实用值**（每次改完都同步提交），重装时直接拿仓库的即可。
-（2026-10-19 核对：实机 `%APPDATA%\CpuPLFix\config.json` 与仓库那份**逐字节一致**。
-唯一会漂的是 `fan.level` —— 跑过 `fan level N` 之后它会留在配置里；`fan.mode=curve` 时它
-是**无效值**，但要让两边保持一致就把它改回 `0`。）
+（2026-10-20 拆分后：实机 `%APPDATA%\T14scontrol\cpu\config.json` 与仓库那份**逐字节一致**。
+仓库那份是分享默认（`pl1_w=0`），本机是 28/55 —— 这是唯一有意的差异。）
 下面是"哪些值和默认不一样"的清单，用来核对：
 
 | 键 | 本机值 | 说明 |
@@ -96,11 +95,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `pl1_w_batt` / `pl2_w_batt` | `20` / `28` | 电池；20W = Minimum Assured Power |
 | `mmio_mode` / `lock_mmio` | `disable` / `true` | 固件侧清零 + 锁，之后只写 MSR |
 | `poll_s` / `ec_poll_s` / `flag_poll_s` / `flag_poll_slow_s` | `5` / `15` / `30` / `120` | 见 `02` §7 |
-| `fan.mode` | `curve` | 用自定义曲线，不用 EC 原生平线 |
-| `fan.curve` / `fan.hyst` | `[[56,2],[79,6],[85,7],[999,64]]` / `5.0` | ≤55°C 2 档 / 56~78°C 6 档 / 79~84°C 7 档 / ≥85°C 满速。**当前 `fan.enabled=false`，曲线未启用** |
-| `fan.min_dwell_s` / `fan.min_write_gap_s` | `60` / `10` | 降档驻留 / 非紧急写入间隔 |
-| `fan.load_boost_pct/s/level` / `fan.load_hold_s` | `70` / `10` / `64` / `30` | 负载前馈：占用 ≥70% 满 10 秒 → 满速，落下后再吹 30 秒 |
-| `fan.dts_max_c` | `92` | DTS 前馈：核心到 92°C 立刻满速 |
+| ~~`fan.*`~~ | — | **2026-10-20 已整段删除**（风扇交给 `T14scontrol\fan`） |
 | `guard.warn_c` / `crit_c` / `escape_c` / `recover_c` | `95` / `98` / `105` / `78` | 温度线 |
 | `guard.warn_pl1_w` / `warn_pl2_w` | `0` / `40` | 预警档只收 PL2 |
 | `guard.crit_*` | `28/35` → `20/25` → `12/14` | 严重档三级阶梯 |
@@ -123,14 +118,6 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 3-config.bat lock=on
 3-config.bat poll=5,15,30
 3-config.bat flag_slow=120
-3-config.bat mode=curve
-3-config.bat fan=56,79,5
-3-config.bat lv=2,6,64
-3-config.bat dwell=60
-3-config.bat fgap=10
-3-config.bat boost=70,10,64
-3-config.bat boost_hold=30
-3-config.bat fan_dts=92
 3-config.bat guard=95,98,105,78
 3-config.bat pl_guard=0,40,28,35
 3-config.bat crit2=20,25
@@ -195,7 +182,7 @@ Wi-Fi、后台程序；**睡眠(S3) 耗电与 PL 无关**。
 
 ```
 主循环（默认 5 秒，只碰 MSR/MMIO）：过热保护定级 → 对齐功耗墙/电源档
-EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固件标志 0x89/0x8A/0x8B 默认 30 秒一次
+EC 读（默认 15 秒）：EC 温度 0x78（**只读**，供过热保护定级）；固件标志 0x89/0x8A/0x8B 默认 30 秒一次
 ```
 
 阈值、曲线、为什么要分频 —— `02` §4 / §7；EC 本身 —— `03`。
@@ -207,8 +194,8 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 ```
 1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
 2-check.bat          看状态：电源/档位、电池链路、版本一致性、两份功耗墙、频率、温度、
-                     固件过热标志、风扇档位/转速/EC 温度 + 曲线 + 保护档
-3-config.bat         命令行改配置：ac= / batt= / fan= / guard= / hold= / dwell= …（不带参数 = 看当前值）
+                     固件过热标志、EC 温度/总线健康度、保护档（**不再显示风扇**）
+3-config.bat         命令行改配置：ac= / batt= / guard= / hold= / crit_hold= …（不带参数 = 看当前值）
 9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
 ```
 
@@ -219,8 +206,7 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 > 3-config.bat                     :: 看全部当前值
 > 3-config.bat ac=28,55            :: 插电 PL1,PL2（0 = 自动）
 > 3-config.bat batt=20,28          :: 电池档（0,0 = 跟随插电）
-> 3-config.bat fan=56,79,5         :: 风扇曲线温度边界 + 回差
-> 3-config.bat lv=2,6,64           :: 每段风扇档位（64 = 满速）
+
 > 3-config.bat guard=95,98,105,78  :: 预警/严重/逃生/解除温度
 > 3-config.bat pl_guard=0,40,28,35 :: 预警 PL1,PL2 / 严重 PL1,PL2（0 = 不压）
 > 3-config.bat poll=5,15,30        :: 主循环 / EC / 固件标志（秒）
@@ -231,19 +217,14 @@ EC 读（默认 15 秒）：EC 温度 0x78 → 风扇曲线写 HFSP(0x2F)；固�
 > 每一项都有范围校验，写错只会报错、不会写盘（例如 `guard=95,90,...` 会被拒绝）。
 > 完整键名随时用 `3-config.bat help` 看。
 
-> **其余 7 个 bat**（`3-fix-now` / `4-风扇状态` / `5-风扇曲线` / `6-风扇满速` / `7-风扇交还EC自动` /
-> `8-风扇固定档` / `部署并重启`）只在工具仓库里有，**部署目录故意没放**（平时用不到）。要临时用，直接调主程序：
->
-> ```bat
-> %APPDATA%\CpuPLFix\runtime\python.exe %APPDATA%\CpuPLFix\CpuPLFix.py fan status
-> %APPDATA%\CpuPLFix\runtime\python.exe %APPDATA%\CpuPLFix\CpuPLFix.py fan curve|max|auto|level N
-> ```
->
-> `fix`（立即修一次）要在管理员 cmd 里跑。
+> **2026-10-20 拆分**：`4-风扇状态` / `5-风扇曲线` / `6-风扇满速` / `7-风扇交还EC自动` /
+> `8-风扇固定档` 五个 bat 和 `CpuPLFix.py fan` 命令**已删除** —— 风扇现在用
+> `%APPDATA%\T14scontrol\fan\1-启动风扇控制.bat`（托盘菜单切模式）。
+> `3-fix-now.bat` 只做功耗墙 + 过热保护，要在管理员 cmd 里跑。
 
 ```powershell
 sc.exe query CpuPLFixSvc                                    # 期望 STATE : 4  RUNNING
-Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
+Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
 ```
 
 正常日志（`svc` = 看守服务，`boot` = 计划任务）：
@@ -326,17 +307,17 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 **回滚：以 git 为准**
 
 ```bash
-cd %APPDATA%\CpuPLFix
+cd %APPDATA%\T14scontrol\cpu
 git log --oneline                 # 找到要回的那一版
 git checkout <sha> -- CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py
 sc.exe stop CpuPLFixSvc & sc.exe start CpuPLFixSvc     # 必须重启服务（被 import）
 ```
 
-> **一键版（2026-10-20 起）**：在 `%APPDATA%\CpuPLFix` 里双击 **`部署并重启.bat`** —— 它自己提权，
+> **一键版（2026-10-20 起）**：在 `%APPDATA%\T14scontrol\cpu` 里双击 **`部署并重启.bat`** —— 它自己提权，
 > 删 `__pycache__`、`net stop/start CpuPLFixSvc`，最后打 `sc query` + 日志尾 14 行。
 > **不再复制文件**（源码和运行目录已合并成同一个），也不碰 `config.json`。
 
-> ⚠️ **`%APPDATA%\CpuPLFix\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
+> ⚠️ **`%APPDATA%\T14scontrol\cpu\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
 > 就在几十分钟内被别的进程清掉了（当时 WorkBuddyAI 在跑）。要留档就进 git。
 > 回滚前后都用 `2-check.bat` 的 **版本一致性** 那一行确认"跑着的就是仓库里那份"。
 
