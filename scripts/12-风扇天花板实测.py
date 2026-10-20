@@ -45,7 +45,9 @@ BASE = os.path.join(os.environ.get('APPDATA') or r'C:\Users\Ting\AppData\Roaming
 BURN = os.path.join(HERE, '_负载发生器.py')
 PY = sys.executable
 
-SVC = 'CpuPLFixSvc'
+# ★2026-10-20: 写 0x2F 的现在是风扇服务 T14sFanSvc(拆分后 CpuPLFix 不碰风扇),
+#   所以要停的是它 —— 停错服务的话风扇服务每 5 秒就把档位改回去, 量到的是别人的档。
+SVC = 'T14sFanSvc'
 TASK = r'\CpuPLFix'
 FAN_AUTO = 0x80
 STEP = 3
