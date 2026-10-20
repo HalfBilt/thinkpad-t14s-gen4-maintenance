@@ -8,7 +8,7 @@
 |---|---|
 | 源码与发布包 | <https://github.com/HalfBilt/CpuPLFix>（带 `runtime.zip`，`1-install.bat` 自动解压，**不依赖系统 Python**） |
 | 本机安装位置 | `C:\Users\Ting\AppData\Roaming\CpuPLFix` |
-| 工具仓库工作副本 | `C:\Users\Ting\AppData\Roaming\_repo`（`2-check` 会拿它和跑着的 `CpuPLFix.py` 比 SHA256） |
+| 工具目录（**源码 + 运行一体**） | `C:\Users\Ting\AppData\Roaming\CpuPLFix` —— 2026-10-20 起 `_repo` 已合并进来：改代码就改这里，`git` 也在这里 |
 
 > ⚠️ **工具本体不存进本手册仓库**（这里只放文档 + `scripts\`）。
 
@@ -326,16 +326,15 @@ Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 40
 **回滚：以 git 为准**
 
 ```bash
-cd %APPDATA%\_repo
+cd %APPDATA%\CpuPLFix
 git log --oneline                 # 找到要回的那一版
 git checkout <sha> -- CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py
-copy CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py %APPDATA%\CpuPLFix\
 sc.exe stop CpuPLFixSvc & sc.exe start CpuPLFixSvc     # 必须重启服务（被 import）
 ```
 
-> **一键版（2026-10-19 起）**：在 `%APPDATA%\_repo` 里双击 **`部署并重启.bat`** —— 它自己提权，
-> 先打印仓库与部署目录两边 `CpuPLFix.py` 的 SHA256 做比对，再复制、删 `__pycache__`、
-> `net stop/start CpuPLFixSvc`，最后打 `sc query` + 日志尾 14 行。**不提交 git，也不碰 `config.json`。**
+> **一键版（2026-10-20 起）**：在 `%APPDATA%\CpuPLFix` 里双击 **`部署并重启.bat`** —— 它自己提权，
+> 删 `__pycache__`、`net stop/start CpuPLFixSvc`，最后打 `sc query` + 日志尾 14 行。
+> **不再复制文件**（源码和运行目录已合并成同一个），也不碰 `config.json`。
 
 > ⚠️ **`%APPDATA%\CpuPLFix\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
 > 就在几十分钟内被别的进程清掉了（当时 WorkBuddyAI 在跑）。要留档就进 git。
