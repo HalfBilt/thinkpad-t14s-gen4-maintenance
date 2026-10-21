@@ -22,7 +22,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE = os.path.join(os.environ.get('APPDATA') or r'C:\Users\Ting\AppData\Roaming', 'CpuPLFix')
+BASE = os.path.join(os.environ.get('APPDATA') or r'C:\Users\Ting\AppData\Roaming', 'T14scontrol', 'cpu')
 BURN = os.path.join(HERE, '_负载发生器.py')
 PY = sys.executable
 

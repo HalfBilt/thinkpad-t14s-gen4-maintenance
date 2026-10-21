@@ -45,12 +45,12 @@ def _find_cpf_base():
     cands = []
     a = os.environ.get('APPDATA')
     if a:
-        cands.append(os.path.join(a, 'CpuPLFix'))
-    cands += sorted(glob.glob(r'C:\Users\*\AppData\Roaming\CpuPLFix'))
+        cands.append(os.path.join(a, 'T14scontrol', 'cpu'))
+    cands += sorted(glob.glob(r'C:\Users\*\AppData\Roaming\T14scontrol\cpu'))
     for c in cands:
         if os.path.isfile(os.path.join(c, 'CpuPLFix.py')):
             return c
-    return cands[0] if cands else r'C:\Users\Ting\AppData\Roaming\CpuPLFix'
+    return cands[0] if cands else r'C:\Users\Ting\AppData\Roaming\T14scontrol\cpu'
 
 
 BASE = _find_cpf_base()

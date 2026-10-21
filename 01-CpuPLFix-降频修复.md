@@ -7,8 +7,8 @@
 | | |
 |---|---|
 | 源码与发布包 | <https://github.com/HalfBilt/CpuPLFix>（带 `runtime.zip`，`1-install.bat` 自动解压，**不依赖系统 Python**） |
-| 本机安装位置 | `C:\Users\Ting\AppData\Roaming\CpuPLFix` |
-| 工具目录（**源码 + 运行一体**） | `C:\Users\Ting\AppData\Roaming\CpuPLFix` —— 2026-10-20 起 `_repo` 已合并进来：改代码就改这里，`git` 也在这里 |
+| 本机安装位置 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu` |
+| 工具目录（**源码 + 运行一体**） | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu` —— 2026-10-20 起 `_repo` 已合并进来：改代码就改这里，`git` 也在这里 |
 
 > ⚠️ **工具本体不存进本手册仓库**（这里只放文档 + `scripts\`）。
 
@@ -47,7 +47,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 1. **常驻服务 `CpuPLFixSvc`（主用）**：`Start=2` 自动，由 SCM 拉起，不需登录、无窗口。
    开机 **14~24 秒**修复；睡眠唤醒 / 休眠恢复靠 `SERVICE_ACCEPT_POWEREVENT` 主动通知，**≤1 秒**；
-   另有轮询（主循环 5 秒）与时钟跳变检测兜底。
+   另有轮询（本机主循环 **2 秒**，代码默认 5 秒）与时钟跳变检测兜底。
 2. **计划任务 `CpuPLFix`（兜底）**：四个触发器 —— 开机 +1 秒（30 分钟内每 5 分钟重复）、登录 +3 秒、
    `Power-Troubleshooter` 事件 1、`Kernel-Power` 事件 107。触发后**先预检**，正常就立刻退出；
    异常才修，然后看守几分钟防固件再补一刀。
@@ -62,14 +62,14 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 | 项目 | 值 |
 |---|---|
-| 工具目录 | `C:\Users\Ting\AppData\Roaming\CpuPLFix`（`runtime\` 是内置 Python，**别删**） |
+| 工具目录 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu`（运行时在上一级 `T14scontrol\runtime`，两个服务共用，**别删**） |
 | 主程序 / 服务 | `CpuPLFix.py` / `CpuPLFixSvc.py` |
 | 配置命令 | `CpuPLFixCfg.py`（入口 `3-config.bat`；只读写 `config.json`，带范围校验和 `undo`） |
 | 驱动 | `TSCtl.sys`（从 ThrottleStop 提取的签名驱动，服务名 `TSCtl`，按需启动） |
 | 看守服务 | `CpuPLFixSvc`（`Start=2`、`Type=16`） |
 | 计划任务 | `\CpuPLFix`（SYSTEM 身份；普通权限查不到，用日志确认它在跑） |
 | 日志 | `logs\fix.log`（只记事件、不记轮询；超 **2MB** 自动滚成 `fix.log.1`，只留一份）。`2-check` 只留一行摘要；`boot` 的触发标签是实测的；`logs\boot_last.txt` 是判断"到底睡没睡"的小状态文件（删了无副作用） |
-| 命令行入口 | 仓库里有 11 个 `.bat`；**部署目录放 4 个**：`1-install` / `2-check` / `3-config` / `9-uninstall`（见 §5）。⚠️ 2026-10-19 之前部署目录里**没有** `3-config.bat`（只有 3 个），已补上；仓库里那份原来因为找不到 `%~dp0runtime\python.exe` 也跑不起来（仓库只有 `runtime.zip`），已改成**回退到部署目录的 runtime** |
+| 命令行入口 | 仓库和部署目录是同一套 **6 个** `.bat`：`1-install` / `2-check` / `3-config` / `3-fix-now` / `9-uninstall` / `部署并重启`（见 §5） |
 
 `config.json` 主要键：
 
@@ -84,9 +84,9 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 ### 3.1 本机配置（重装后唯一要补回来的东西）
 
-**仓库里那份 `config.json` 就是本机实用值**（每次改完都同步提交），重装时直接拿仓库的即可。
-（2026-10-20 拆分后：实机 `%APPDATA%\T14scontrol\cpu\config.json` 与仓库那份**逐字节一致**。
-仓库那份是分享默认（`pl1_w=0`），本机是 28/55 —— 这是唯一有意的差异。）
+⚠️ **手册仓库不存 `config.json`**（`.gitignore` 明确排除了它）。本机配置只在
+`%APPDATA%\T14scontrol\cpu\config.json`：重装前先备份这个文件；没备份就按下面“从零写回”那串命令重建。
+代码里的 `DEFAULT_CFG` 是分享默认（`pl1_w=0`），**不是本机值**。
 下面是"哪些值和默认不一样"的清单，用来核对：
 
 | 键 | 本机值 | 说明 |
@@ -94,19 +94,18 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `pl1_w` / `pl2_w` | `28` / `55` | 插电；PL1 = i7-1360P 的 **PBP 28W**，PL2 = **55W**（固件原厂值；MTP 64W 见 §3.3 为什么不用；时间窗 `pl1_time=35`→8 秒 / `pl2_time=66`→5 秒） |
 | `pl1_w_batt` / `pl2_w_batt` | `20` / `28` | 电池；20W = Minimum Assured Power |
 | `mmio_mode` / `lock_mmio` | `disable` / `true` | 固件侧清零 + 锁，之后只写 MSR |
-| `poll_s` / `ec_poll_s` / `flag_poll_s` / `flag_poll_slow_s` | `5` / `15` / `30` / `120` | 见 `02` §7 |
+| `poll_s` / `ec_poll_s` / `flag_poll_s` / `flag_poll_slow_s` | `2` / `15` / `30` / `120` | 本机主循环 2 秒；见 `02` §7 |
 | ~~`fan.*`~~ | — | **2026-10-20 已整段删除**（风扇交给 `T14scontrol\fan`） |
 | `guard.warn_c` / `crit_c` / `escape_c` / `recover_c` | `95` / `98` / `105` / `78` | 温度线 |
-| `guard.warn_pl1_w` / `warn_pl2_w` | `0` / `40` | 预警档只收 PL2 |
-| `guard.crit_*` | `28/35` → `20/25` → `12/14` | 严重档三级阶梯 |
+| `guard.warn_pl1_w` / `warn_pl2_w` | `28` / `40` | 预警档只收 PL2（95°C），PL1 保持 28W 不动 |
+| `guard.crit_*` | `28/35` → `20/25` → `12/14` | 严重档三级阶梯（第一级仍保 PL1 28W，只再收 PL2） |
 | `guard.crit_hold_s` / `step_dwell_s` / `ramp_step_s` | `10` / `15` / `30` | 驻留 / 每级加深 / 每级回升 |
-| `guard.crit_now_c` | `100` | 单次到它就立即进严重档（= TjMax） |
+| `guard.crit_now_c` / `crit_floor_c` | `99` / `100` | 单次到 99 立即进第二级；单次到 100（= TjMax）直接下地板 |
 | `guard.flag_pl1_w` / `flag_pl2_w` | `20` / `28` | 固件标志锁存档 |
-| `guard.trip_hold_s` | `45` | **兼容键**：旧版代码拿它当锁存判定秒数；现版实际读 `flag_release_s`（`3-config.bat hold=` 会同时写这两个键）。0 = 关掉这条出口 |
-| `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。`3-config.bat tpower=on/off`（`02` §4.5） |
-| `guard.flag_release_c` / `flag_release_s` | `97` / `60` | 温度连续 ≤97°C 满 60 秒 → 判锁存、放开（97 低于 `crit_c`=98，高于满载稳态 89~95） |
+| `guard.trip_hold_s` | `60` | **兼容键**：现版锁存判定实际读 `flag_release_s`，只有它缺失时才回退到 `trip_hold_s`；`3-config.bat hold=` 会同时写这两个键。0 = 关掉这条出口 |
+| `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。本机 28W 封顶、且 95°C 先被保护接管，实际无效果。`3-config.bat tpower=on/off`（`02` §4.5） |
+| `guard.flag_release_c` / `flag_release_s` | `92` / `60` | 温度连续 ≤92°C 满 60 秒 → 判锁存、放开（92 比 `crit_c`=98 低 6°C，留出安全余量） |
 | `guard.min_hold_s` / `release_dwell_s` | `30` / `10` | 防保护档来回切 |
-| `guard.cool_tail_s` | `30` | 退出保护后继续满速 |
 | `guard.escape_hibernate` | `false` | **不做**主动休眠 |
 
 要**手工从零写回**（比如配置文件被删了），按顺序跑这一串（每条都会校验范围，写错不落盘）：
@@ -116,10 +115,10 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 3-config.bat batt=20,28
 3-config.bat mmio=disable
 3-config.bat lock=on
-3-config.bat poll=5,15,30
+3-config.bat poll=2,15,30
 3-config.bat flag_slow=120
 3-config.bat guard=95,98,105,78
-3-config.bat pl_guard=0,40,28,35
+3-config.bat pl_guard=28,40,28,35
 3-config.bat crit2=20,25
 3-config.bat crit3=12,14
 3-config.bat crit_hold=10
@@ -127,10 +126,9 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 3-config.bat ramp=30
 3-config.bat flag_pl=20,28
 3-config.bat hold=60
-3-config.bat flag_rel=97,60
+3-config.bat flag_rel=92,60
 3-config.bat gmin=30
 3-config.bat rel=10
-3-config.bat cool_tail=30
 3-config.bat hibernate=off
 ```
 
@@ -138,8 +136,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 ```powershell
 3-config.bat                                              # 打印全部当前值
-(Get-Item "$env:APPDATA\CpuPLFix\TSCtl.sys").Length       # 50216（固定）
-Get-Content "$env:APPDATA\CpuPLFix\logs\fix.log" -Tail 20 # 看服务有没有起来
+(Get-Item "$env:APPDATA\T14scontrol\cpu\TSCtl.sys").Length       # 50216（固定）
+Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 20 # 看服务有没有起来
 ```
 
 ### 3.2 `mmio_mode = disable` 的后果（本机在用）
@@ -181,7 +179,7 @@ Wi-Fi、后台程序；**睡眠(S3) 耗电与 PL 无关**。
 同一个看守服务按固定顺序干活，节奏分两条：
 
 ```
-主循环（默认 5 秒，只碰 MSR/MMIO）：过热保护定级 → 对齐功耗墙/电源档
+主循环（本机 2 秒，代码默认 5 秒；只碰 MSR/MMIO）：过热保护定级 → 对齐功耗墙/电源档
 EC 读（默认 15 秒）：EC 温度 0x78（**只读**，供过热保护定级）；固件标志 0x89/0x8A/0x8B 默认 30 秒一次
 ```
 
@@ -194,7 +192,8 @@ EC 读（默认 15 秒）：EC 温度 0x78（**只读**，供过热保护定级�
 ```
 1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
 2-check.bat          看状态：电源/档位、电池链路、版本一致性、两份功耗墙、频率、温度、
-                     固件过热标志、EC 温度/总线健康度、保护档（**不再显示风扇**）
+                     固件过热标志、EC 温度/总线健康度、保护档
+                     （**风扇只显示一行"由 fan 工具独立控制"，不显示 RPM/曲线**）
 3-config.bat         命令行改配置：ac= / batt= / guard= / hold= / crit_hold= …（不带参数 = 看当前值）
 9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
 ```
@@ -208,8 +207,8 @@ EC 读（默认 15 秒）：EC 温度 0x78（**只读**，供过热保护定级�
 > 3-config.bat batt=20,28          :: 电池档（0,0 = 跟随插电）
 
 > 3-config.bat guard=95,98,105,78  :: 预警/严重/逃生/解除温度
-> 3-config.bat pl_guard=0,40,28,35 :: 预警 PL1,PL2 / 严重 PL1,PL2（0 = 不压）
-> 3-config.bat poll=5,15,30        :: 主循环 / EC / 固件标志（秒）
+> 3-config.bat pl_guard=28,40,28,35 :: 预警 PL1,PL2 / 严重 PL1,PL2
+> 3-config.bat poll=2,15,30        :: 主循环 / EC / 固件标志（秒）
 > 3-config.bat mmio=disable        :: disable（推荐）或 value
 > 3-config.bat undo                :: 撤销上一次保存
 > ```
@@ -233,7 +232,7 @@ Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
 [*] 已是目标状态: MMIO 清零+锁, MSR PL1=28.00W PL2=55.00W, 倍频 43, 无需修复
 [*] 电源档位[电池/平衡/disable]: MSR PL1 55.0->20.0W PL2 55.0->28.0W; MMIO 清零+锁(固件侧已禁用, MSR 全权)
 [*] 电源档位[AC/高性能/disable]: MSR PL1 20.0->28.0W PL2 28.0->55.0W
-[*] 轮询节奏: 主循环 5 秒(只对功耗墙/电源档, 不碰 EC) / EC 读 15 秒 / 固件标志 120 秒 —— 开机前 5 分钟和过热保护期间自动加密
+[*] 轮询节奏: 主循环 2 秒(只对功耗墙/电源档, 不碰 EC) / EC 读 15 秒 / 固件标志 120 秒 —— 开机前 5 分钟和过热保护期间自动加密
 ```
 
 > 最后一行里的 `固件标志 120 秒` 是**当前生效值**：凉机时按 `flag_poll_slow_s` 放慢；热了会自动回到 30 秒。
@@ -252,10 +251,10 @@ Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
 `2-check.bat` 跑完只在日志里留**一行摘要**：
 
 ```
-[*] 手动体检: AC  MSR PL1=28.00W PL2=55.00W  倍频 41  EC温度 63°C  DTS 75°C  风扇 6 档(约 3880 RPM) 3875RPM  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
+[*] 手动体检: AC  MSR PL1=28.00W PL2=55.00W  倍频 41  EC温度 63°C  DTS 75°C  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
 ```
 
-> 标志读失败时那一格显示 `--`（**不是** `0x00`）—— 这两件事必须分清，见 `02` §3.1。
+> 标志读失败时那一格显示 `--`（**不是** `0x00`）—— 这两件事必须分清，见 `03` §4.1。
 
 唤醒后应出现这两行之一：
 

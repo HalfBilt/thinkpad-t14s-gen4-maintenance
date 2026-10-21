@@ -177,12 +177,12 @@ W ("  CpuPLFixSvc 看守服务 : {0}" -f $(if ($plSvc) { "$($plSvc.Status) / $($
 if (-not $plSvc -or $plSvc.Status -ne 'Running') { $cpuIssue++ }
 W ("  TSCtl 驱动服务       : {0}" -f $(if ($tsCtl) { "$($tsCtl.Status) / $($tsCtl.StartType)" } else { '不存在' }))
 
-# 10.2 当前电源档位（对得上 config.json 的 40/64 与 28/55）
+# 10.2 当前电源档位（对得上 config.json 的 28/55 与 20/28）
 $onAC = ((Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue).BatteryStatus -eq 2)
-W ("  当前电源 / 档位      : {0}" -f $(if ($onAC) { '接电源 AC（应 40/55W）' } else { '电池（应 20/28W）' }))
+W ("  当前电源 / 档位      : {0}" -f $(if ($onAC) { '接电源 AC（应 28/55W）' } else { '电池（应 20/28W）' }))
 
 # 10.3 日志最近一次记录（非管理员查不到计划任务，用日志确认它在跑）
-$logPath = Join-Path $env:APPDATA 'CpuPLFix\logs\fix.log'
+$logPath = Join-Path $env:APPDATA 'T14scontrol\cpu\logs\fix.log'
 if (Test-Path $logPath) {
     $lg = @(Get-Content $logPath -Tail 80 -ErrorAction SilentlyContinue)
     $stamp = ($lg | Where-Object { $_ -match '^=+ \d{4}-\d{2}-\d{2} ' } | Select-Object -Last 1)
@@ -206,7 +206,7 @@ if ($perf.Count -gt 0) {
     W ("  16 核频率(MHz)       : {0}" -f ($perf -join ' '))
     W ("  最高 / 最低          : {0} / {1}" -f $perf[-1], $perf[0])
     if ($perf[-1] -lt 700) {
-        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 2-check.bat 看功耗墙，救急可双击 %APPDATA%\CpuPLFix\1-install.bat（手册 01）"
+        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 2-check.bat 看功耗墙，救急可双击 %APPDATA%\T14scontrol\cpu\1-install.bat（手册 01）"
         $cpuIssue++
     }
 } else {

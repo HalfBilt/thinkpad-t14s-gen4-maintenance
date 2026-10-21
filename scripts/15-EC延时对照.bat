@@ -14,7 +14,7 @@ if not defined SCRIPT (
 
 rem ===== find a usable Python: prefer the one bundled with CpuPLFix =====
 set "PY="
-if exist "%APPDATA%\CpuPLFix\runtime\python.exe" set "PY=%APPDATA%\CpuPLFix\runtime\python.exe"
+if exist "%APPDATA%\T14scontrol\runtime\python.exe" set "PY=%APPDATA%\T14scontrol\runtime\python.exe"
 if not defined PY for /f "delims=" %%p in ('where python 2^>nul') do if not defined PY set "PY=%%p"
 if not defined PY (
   echo [X] No Python found. Install CpuPLFix first - it ships runtime\python.exe.
