@@ -22,9 +22,11 @@
 ### 目录
 
 ```
-%APPDATA%\T14scontrol\runtime        共用 Python 3.13（两个服务都跑它）
-%APPDATA%\T14scontrol\cpu            CpuPLFix：功耗墙 + 过热保护（源码 + 运行 + git 一体）
-%APPDATA%\T14scontrol\fan            FanControl：风扇（源码 + git 一体）
+%APPDATA%\T14scontrol\runtime        共用 Python 3.13（三个组件都跑它）
+%APPDATA%\T14scontrol\cpu            CpuPLFix：功耗墙 + 过热保护（日志在 cpu\logs\）
+%APPDATA%\T14scontrol\fan            FanControl：风扇（日志在 fan\logs\）
+%APPDATA%\T14scontrol\hud            任务栏显示（日志在 hud\logs\）
+%APPDATA%\T14scontrol\status         两个服务写的快照 cpu.json / fan.json
 Desktop\Hermes\电脑维护经验           本手册 + scripts
 ```
 
@@ -51,7 +53,7 @@ Desktop\Hermes\电脑维护经验           本手册 + scripts
 
 - `%APPDATA%\T14scontrol\cpu\dev\selftest.py` —— **离线回归 67 项**，改完代码必跑（不碰 EC）
 - `%APPDATA%\T14scontrol\fan\src\fan_control.py --selftest` —— 风扇侧离线自检
-- `%APPDATA%\T14scontrol\cpu\2-check.bat` —— 实机体检（**需管理员**，要开 TSCtl 驱动）
+- `%APPDATA%\T14scontrol\cpu\2-查看状态.bat` —— 实机体检（**需管理员**，要开 TSCtl 驱动）
 - `scripts\体检.bat` —— 一键体检，结果存 `体检报告-时间.txt`
 
 ---
@@ -69,6 +71,7 @@ Desktop\Hermes\电脑维护经验           本手册 + scripts
 | [`06-EC现状基线与未决问题.md`](06-EC现状基线与未决问题.md) | EC 撞车率与读等待 · 体检行口径 · 不用当故障查的现象 · 残留问题 |
 | [`07-工具部署与目录结构.md`](07-工具部署与目录结构.md) | 目录 / 服务 / 运行时 · 安装 · 迁移 · 改配置 · 排障 |
 | [`08-参数速查表.md`](08-参数速查表.md) | **一页速查**：全部参数当前值 · 温度→动作 · 档位→RPM · 调整场景 · 正常基准 |
+| [`10-突然断电排查-2026-10-31.md`](10-突然断电排查-2026-10-31.md) | **2026-10-31 交接**：**7 次**硬断电（6008）的完整证据 · 已排除项（含睡眠假设、UU 远程）· **EC 复位效果 9m30s→1h50m** · 当天改动与当前状态 · 下一步与测量坑 |
 
 脚本都在 `scripts\`；最常用 **`scripts\体检.bat`**（一键体检）。
 
