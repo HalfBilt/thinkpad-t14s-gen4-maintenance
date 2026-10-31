@@ -2,13 +2,13 @@
 
 > 本文 = 这条线的**结果**：症状与根因 · 工具文件与配置 · 启动机制 · 怎么验证 · 怎么回滚 · 两条规矩。
 > 风扇 / 过热 / EC 在 [`02`](02-风扇与过热保护.md) 与 [`03`](03-EC-寄存器与读写.md)；机器档案见 [`00`](00-电脑综述.md)。
-> 工具内部的修改历史不在这里，在 <https://github.com/HalfBilt/CpuPLFix> 的 git 记录里。
+> 工具内部的修改历史不在这里，在 <https://github.com/HalfBilt/T14scontrol> 的 git 记录里（`cpu/` 目录）。
 
 | | |
 |---|---|
-| 源码与发布包 | <https://github.com/HalfBilt/CpuPLFix>（带 `runtime.zip`，`1-install.bat` 自动解压，**不依赖系统 Python**） |
-| 本机安装位置 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu` |
-| 工具目录（**源码 + 运行一体**） | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu` —— 2026-10-20 起 `_repo` 已合并进来：改代码就改这里，`git` 也在这里 |
+| 源码 | <https://github.com/HalfBilt/T14scontrol>（2026-10-25 起与风扇、HUD 合为一个整仓；`cpu/` 是这条线） |
+| 本机安装位置 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu`（**部署目录就是 git 工作区**） |
+| 运行时 | 上一级 `T14scontrol\runtime`，两个服务 + HUD 共用；新机器要先放好，`1-安装.bat` 不会自带 |
 
 > ⚠️ **工具本体不存进本手册仓库**（这里只放文档 + `scripts\`）。
 
@@ -62,14 +62,14 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 | 项目 | 值 |
 |---|---|
-| 工具目录 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu`（运行时在上一级 `T14scontrol\runtime`，两个服务共用，**别删**） |
+| 工具目录 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu`（运行时在上一级 `T14scontrol\runtime`，三个组件共用，**别删**） |
 | 主程序 / 服务 | `CpuPLFix.py` / `CpuPLFixSvc.py` |
-| 配置命令 | `CpuPLFixCfg.py`（入口 `3-config.bat`；只读写 `config.json`，带范围校验和 `undo`） |
+| 配置命令 | `CpuPLFixCfg.py`（**2026-10-31 起没有 `3-config.bat`，直接命令行调**；只读写 `config.json`，带范围校验和 `undo`） |
 | 驱动 | `TSCtl.sys`（从 ThrottleStop 提取的签名驱动，服务名 `TSCtl`，按需启动） |
 | 看守服务 | `CpuPLFixSvc`（`Start=2`、`Type=16`） |
-| 计划任务 | `\CpuPLFix`（SYSTEM 身份；普通权限查不到，用日志确认它在跑） |
-| 日志 | `logs\fix.log`（只记事件、不记轮询；超 **2MB** 自动滚成 `fix.log.1`，只留一份）。`2-check` 只留一行摘要；`boot` 的触发标签是实测的；`logs\boot_last.txt` 是判断"到底睡没睡"的小状态文件（删了无副作用） |
-| 命令行入口 | 仓库和部署目录是同一套 **6 个** `.bat`：`1-install` / `2-check` / `3-config` / `3-fix-now` / `9-uninstall` / `部署并重启`（见 §5） |
+| 计划任务 | `\CpuPLFix`（SYSTEM 身份。**普通权限 `schtasks /query` / `Get-ScheduledTask` 都看不到**，会误判成"缺失"；管理员查或看 `fix.log` 的 `boot` 行） |
+| 日志 | `logs\fix.log`（只记事件、不记轮询；超 **2MB** 自动滚成 `fix.log.1`，只留一份）。`2-查看状态.bat` 只留一行摘要；`boot` 的触发标签是实测的；`logs\boot_last.txt` 是判断"到底睡没睡"的小状态文件（删了无副作用） |
+| 命令行入口 | 部署目录 **4 个** `.bat`：`1-安装` / `2-查看状态` / `3-重启服务` / `4-卸载`；重启后一次性恢复用上一级 `0-重启后部署.bat`（见 §5） |
 
 `config.json` 主要键：
 
@@ -84,9 +84,9 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 
 ### 3.1 本机配置（重装后唯一要补回来的东西）
 
-⚠️ **手册仓库不存 `config.json`**（`.gitignore` 明确排除了它）。本机配置只在
-`%APPDATA%\T14scontrol\cpu\config.json`：重装前先备份这个文件；没备份就按下面“从零写回”那串命令重建。
-代码里的 `DEFAULT_CFG` 是分享默认（`pl1_w=0`），**不是本机值**。
+本机配置**就在 T14scontrol 仓库的 `cpu/config.json`**（部署目录 = 工作区，文件受 git 跟踪）：
+改完提交即留档，重装直接 clone 该仓库即可。手册仓库（本仓库）不存它。
+如果文件被删，按下面“从零写回”那串命令重建；代码里的 `DEFAULT_CFG` 是分享默认（`pl1_w=0`），**不是本机值**。
 下面是"哪些值和默认不一样"的清单，用来核对：
 
 | 键 | 本机值 | 说明 |
@@ -102,8 +102,8 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | `guard.crit_hold_s` / `step_dwell_s` / `ramp_step_s` | `10` / `15` / `30` | 驻留 / 每级加深 / 每级回升 |
 | `guard.crit_now_c` / `crit_floor_c` | `99` / `100` | 单次到 99 立即进第二级；单次到 100（= TjMax）直接下地板 |
 | `guard.flag_pl1_w` / `flag_pl2_w` | `20` / `28` | 固件标志锁存档 |
-| `guard.trip_hold_s` | `60` | **兼容键**：现版锁存判定实际读 `flag_release_s`，只有它缺失时才回退到 `trip_hold_s`；`3-config.bat hold=` 会同时写这两个键。0 = 关掉这条出口 |
-| `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。本机 28W 封顶、且 95°C 先被保护接管，实际无效果。`3-config.bat tpower=on/off`（`02` §4.5） |
+| `guard.trip_hold_s` | `60` | **兼容键**：现版锁存判定实际读 `flag_release_s`，只有它缺失时才回退到 `trip_hold_s`；`CpuPLFixCfg.py hold=` 会同时写这两个键。0 = 关掉这条出口 |
+| `guard.temp_power` | `false` | **温度→功耗调节器**（"风扇优先"模型）：开 = 日常功耗跟着温度走、顶档受 `pl1_w` 约束；关 = 固定功耗墙。本机 28W 封顶、且 95°C 先被保护接管，实际无效果。`CpuPLFixCfg.py tpower=on/off`（`02` §4.5） |
 | `guard.flag_release_c` / `flag_release_s` | `92` / `60` | 温度连续 ≤92°C 满 60 秒 → 判锁存、放开（92 比 `crit_c`=98 低 6°C，留出安全余量） |
 | `guard.min_hold_s` / `release_dwell_s` | `30` / `10` | 防保护档来回切 |
 | `guard.escape_hibernate` | `false` | **不做**主动休眠 |
@@ -111,31 +111,33 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 要**手工从零写回**（比如配置文件被删了），按顺序跑这一串（每条都会校验范围，写错不落盘）：
 
 ```bat
-3-config.bat ac=28,55
-3-config.bat batt=20,28
-3-config.bat mmio=disable
-3-config.bat lock=on
-3-config.bat poll=2,15,30
-3-config.bat flag_slow=120
-3-config.bat guard=95,98,105,78
-3-config.bat pl_guard=28,40,28,35
-3-config.bat crit2=20,25
-3-config.bat crit3=12,14
-3-config.bat crit_hold=10
-3-config.bat step_dwell=15
-3-config.bat ramp=30
-3-config.bat flag_pl=20,28
-3-config.bat hold=60
-3-config.bat flag_rel=92,60
-3-config.bat gmin=30
-3-config.bat rel=10
-3-config.bat hibernate=off
+cd /d "%APPDATA%\T14scontrol\cpu"
+set PY=..\runtime\python.exe
+%PY% CpuPLFixCfg.py ac=28,55
+%PY% CpuPLFixCfg.py batt=20,28
+%PY% CpuPLFixCfg.py mmio=disable
+%PY% CpuPLFixCfg.py lock=on
+%PY% CpuPLFixCfg.py poll=2,15,30
+%PY% CpuPLFixCfg.py flag_slow=120
+%PY% CpuPLFixCfg.py guard=95,98,105,78
+%PY% CpuPLFixCfg.py pl_guard=28,40,28,35
+%PY% CpuPLFixCfg.py crit2=20,25
+%PY% CpuPLFixCfg.py crit3=12,14
+%PY% CpuPLFixCfg.py crit_hold=10
+%PY% CpuPLFixCfg.py step_dwell=15
+%PY% CpuPLFixCfg.py ramp=30
+%PY% CpuPLFixCfg.py flag_pl=20,28
+%PY% CpuPLFixCfg.py hold=60
+%PY% CpuPLFixCfg.py flag_rel=92,60
+%PY% CpuPLFixCfg.py gmin=30
+%PY% CpuPLFixCfg.py rel=10
+%PY% CpuPLFixCfg.py hibernate=off
 ```
 
 核对（重装后跑一遍）：
 
 ```powershell
-3-config.bat                                              # 打印全部当前值
+..\runtime\python.exe CpuPLFixCfg.py                      # 打印全部当前值
 (Get-Item "$env:APPDATA\T14scontrol\cpu\TSCtl.sys").Length       # 50216（固定）
 Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 20 # 看服务有没有起来
 ```
@@ -165,7 +167,7 @@ MMIO 被清零 + 锁死后，CPU 取 `min(MSR, MMIO)` 就只剩 MSR，于是**�
 >
 > **PL2（短时爆发）取 55W = 固件原厂值。**
 > 2026-10-20 试过按 i7-1360P 的规格改成 **MTP 64W**（差 45 J 突发能量，对温度影响 ≈1~2°C），
-> 但为了"不折腾"最后**退回 55W**。真要换成 64W：`3-config.bat ac=28,64`（60 秒内自动生效）。
+> 但为了"不折腾"最后**退回 55W**。真要换成 64W：`CpuPLFixCfg.py ac=28,64`（60 秒内自动生效）。
 > 另一个方向（把"风扇优先"的模型做成调节器）见 `02` §4.5 —— 机制已实现，**默认关**。
 > **电池档 20W/28W = 省电优先**：PL1 才是持续耗电/发热的闸门，20W 下全核仍有 ~2.0GHz。
 
@@ -190,36 +192,42 @@ EC 读（默认 15 秒）：EC 温度 0x78（**只读**，供过热保护定级�
 ## 5. 怎么用 / 怎么验证
 
 ```
-1-install.bat        装 / 重启（要管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
-2-check.bat          看状态：电源/档位、电池链路、版本一致性、两份功耗墙、频率、温度、
-                     固件过热标志、EC 温度/总线健康度、保护档
+1-安装.bat           装 / 重启（管理员；注册驱动服务 + 看守服务 + 计划任务，并立即修一次）
+2-查看状态.bat       看状态：电源/档位、电池链路、版本一致性、两份功耗墙、频率、温度、
+                     固件过热标志、EC 温度/总线健康度、保护档（只读）
                      （**风扇只显示一行"由 fan 工具独立控制"，不显示 RPM/曲线**）
-3-config.bat         命令行改配置：ac= / batt= / guard= / hold= / crit_hold= …（不带参数 = 看当前值）
-9-uninstall.bat      卸载（删服务 + 计划任务，不删文件）
+3-重启服务.bat       清 __pycache__ + 重启 CpuPLFixSvc + 打印日志尾部
+4-卸载.bat           卸载（删计划任务、看守服务、驱动服务，不删文件）
 ```
 
-> `3-config.bat` **只改 `config.json`**：不碰硬件、不用管理员、跑完就退出，不常驻任何进程。
-> 保存后看守服务 ≤60 秒自动重读；上一版自动存成 `config.json.bak`，改错了一条命令退回。
+> `4-卸载.bat` 会连带删除 **风扇共用的 `TSCtl` 驱动**（标记为删除，重启后生效），
+> 风扇服务随之失效，而风扇安装脚本**不装驱动**。卸载 CPU 侧前先想清楚，恢复必须再跑
+> `1-安装.bat`（本机 2026-10-31 踩过：07:41 卸载 → 风扇停摆 → 12:36 用 `0-重启后部署.bat` 恢复）。
+
+> 改配置直接调 `CpuPLFixCfg.py`（**2026-10-31 起 `3-config.bat` 已移除**）。它**只改 `config.json`**：
+> 不碰硬件、不用管理员、跑完就退出，不常驻任何进程。保存后看守服务 ≤60 秒自动重读；
+> 上一版自动存成 `config.json.bak`，改错了一条命令退回。
 >
 > ```bat
-> 3-config.bat                     :: 看全部当前值
-> 3-config.bat ac=28,55            :: 插电 PL1,PL2（0 = 自动）
-> 3-config.bat batt=20,28          :: 电池档（0,0 = 跟随插电）
-
-> 3-config.bat guard=95,98,105,78  :: 预警/严重/逃生/解除温度
-> 3-config.bat pl_guard=28,40,28,35 :: 预警 PL1,PL2 / 严重 PL1,PL2
-> 3-config.bat poll=2,15,30        :: 主循环 / EC / 固件标志（秒）
-> 3-config.bat mmio=disable        :: disable（推荐）或 value
-> 3-config.bat undo                :: 撤销上一次保存
+> cd /d "%APPDATA%\T14scontrol\cpu"
+> set PY=..\runtime\python.exe
+> %PY% CpuPLFixCfg.py                        :: 看全部当前值
+> %PY% CpuPLFixCfg.py ac=28,55               :: 插电 PL1,PL2（0 = 自动）
+> %PY% CpuPLFixCfg.py batt=20,28             :: 电池档（0,0 = 跟随插电）
+> %PY% CpuPLFixCfg.py guard=95,98,105,78     :: 预警/严重/逃生/解除温度
+> %PY% CpuPLFixCfg.py pl_guard=28,40,28,35   :: 预警 PL1,PL2 / 严重 PL1,PL2
+> %PY% CpuPLFixCfg.py poll=2,15,30           :: 主循环 / EC / 固件标志（秒）
+> %PY% CpuPLFixCfg.py mmio=disable           :: disable（推荐）或 value
+> %PY% CpuPLFixCfg.py undo                   :: 撤销上一次保存
 > ```
 >
 > 每一项都有范围校验，写错只会报错、不会写盘（例如 `guard=95,90,...` 会被拒绝）。
-> 完整键名随时用 `3-config.bat help` 看。
+> 完整键名用 `%PY% CpuPLFixCfg.py help` 看。
 
-> **2026-10-20 拆分**：`4-风扇状态` / `5-风扇曲线` / `6-风扇满速` / `7-风扇交还EC自动` /
-> `8-风扇固定档` 五个 bat 和 `CpuPLFix.py fan` 命令**已删除** —— 风扇现在用
-> 独立服务 `T14sFanSvc` 管（`%APPDATA%\T14scontrol\fan\3-风扇服务状态.bat` 看状态，见 `02` §2）。
-> `3-fix-now.bat` 只做功耗墙 + 过热保护，要在管理员 cmd 里跑。
+> **2026-10-20 拆分 + 2026-10-31 精简**：风扇相关 bat 与 `CpuPLFix.py fan` 命令早已删除 ——
+> 风扇现在由独立服务 `T14sFanSvc` 管（`%APPDATA%\T14scontrol\fan\3-风扇服务状态.bat` 看状态，
+> 见 `02` §2）。`3-fix-now.bat`、`3-config.bat`、`9-uninstall.bat` 也在 10-31 移除：
+> 立即修一次用 `..\runtime\python.exe CpuPLFix.py fix`（管理员），改配置见上，卸载用 `4-卸载.bat`。
 
 ```powershell
 sc.exe query CpuPLFixSvc                                    # 期望 STATE : 4  RUNNING
@@ -248,7 +256,7 @@ Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
 
 > `开机后复查` / `定时复查` **且状态正常**时只记一行（`[*] 定时复查: 状态正常, 无需修复`）。
 
-`2-check.bat` 跑完只在日志里留**一行摘要**：
+`2-查看状态.bat` 跑完只在日志里留**一行摘要**：
 
 ```
 [*] 手动体检: AC  MSR PL1=28.00W PL2=55.00W  倍频 41  EC温度 63°C  DTS 75°C  固件标志 0x89=0x00 0x8A=0x00 0x8B=0x00
@@ -278,7 +286,7 @@ Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
 - 只管 PL1/PL2 这一条路径。**BD PROCHOT**、温度墙、电池/适配器识别问题导致的降频它管不了（要用 ThrottleStop 排查）。
   → 观察手段：`scripts\13-EC诊断.bat` 的 **`throttle`** 子命令会把"倍频掉下来那一瞬间"连同
   功耗墙 / `PROCHOT`(封装与 core) / EC 状态位一起记下来，用来判定到底是哪条线在压 CPU。见 `05` §7。
-- MMIO 偏移按 `0x59A0`（Intel 近几代通用）。换机器先跑 `2-check.bat`，读不到或数值明显不对就是偏移不同。
+- MMIO 偏移按 `0x59A0`（Intel 近几代通用）。换机器先跑 `2-查看状态.bat`，读不到或数值明显不对就是偏移不同。
 - 开机阶段做不到零延迟（0.4GHz 时 Windows 自己启动慢十倍），本机实测 14~24 秒。
 - 开了**内存完整性（HVCI）**时可能拒绝加载这类直接访问物理内存的驱动（本机是关的）。
 - **需要重启的三种情况**：① `mmio_mode` 在 disable/value 间切换；② value 模式升档超过已锁值；
@@ -298,7 +306,7 @@ Get-Content "$env:APPDATA\T14scontrol\cpu\logs\fix.log" -Tail 40
     表现为档位来回跳。
   - **ThrottleStop 改 MSR 时别和 `mmio_lock` / PL 写入叠着用**：它退出或重开时可能把
     `MSR 0x610` 还原（取决于它的设置），我们下一轮会再写回去 —— 这类"改完又变回去"先在
-    `2-check` 里看 `MSR 0x610` 和日志两处，不要急着判成服务失效。
+    `2-查看状态.bat` 里看 `MSR 0x610` 和日志两处，不要急着判成服务失效。
   - **两边用的是同一个 `TSCtl.sys` 驱动**（本工具就是从 ThrottleStop 里提取的）。如果 ThrottleStop
     启动后本服务突然开始报端口类错误，先看 `TSCtl` 服务状态（`sc query TSCtl`）—— 这条还没实测过，
     只作为排查方向。
@@ -312,16 +320,17 @@ git checkout <sha> -- CpuPLFix.py CpuPLFixCfg.py CpuPLFixSvc.py
 sc.exe stop CpuPLFixSvc & sc.exe start CpuPLFixSvc     # 必须重启服务（被 import）
 ```
 
-> **一键版（2026-10-20 起）**：在 `%APPDATA%\T14scontrol\cpu` 里双击 **`部署并重启.bat`** —— 它自己提权，
+> **一键版**：在 `%APPDATA%\T14scontrol\cpu` 里双击 **`3-重启服务.bat`** —— 它自己提权，
 > 删 `__pycache__`、`net stop/start CpuPLFixSvc`，最后打 `sc query` + 日志尾 14 行。
 > **不再复制文件**（源码和运行目录已合并成同一个），也不碰 `config.json`。
+> 整机重启后的恢复（风扇 + CPU + HUD）用上一级的 `0-重启后部署.bat`。
 
 > ⚠️ **`%APPDATA%\T14scontrol\cpu\*.bak-*` 这类手工快照不保险**：2026-10-19 早上另一批 `*.bak-20261019-1030`
 > 就在几十分钟内被别的进程清掉了（当时 WorkBuddyAI 在跑）。要留档就进 git。
-> 回滚前后都用 `2-check.bat` 的 **版本一致性** 那一行确认"跑着的就是仓库里那份"。
+> 回滚前后都用 `2-查看状态.bat` 的 **版本一致性** 那一行确认"跑着的就是仓库里那份"。
 
 ```powershell
-# 不用 9-uninstall.bat 时的手动卸载
+# 不用 4-卸载.bat 时的手动卸载
 schtasks /delete /tn CpuPLFix /f                      # [管理员]
 sc.exe stop CpuPLFixSvc; sc.exe delete CpuPLFixSvc    # [管理员]
 sc.exe stop TSCtl;       sc.exe delete TSCtl          # [管理员]
@@ -337,7 +346,7 @@ sc.exe stop TSCtl;       sc.exe delete TSCtl          # [管理员]
    `if not exist runtime\python.exe ( … exit /b 1 )` 这个块收尾的 `)` 和后面的命令挤在同一行，
    cmd 在**解析阶段**就报 `"C:\Windows\System32\cmd.exe" was unexpected at this time.` 并直接结束
    （当时只有 `1-install.bat` 恰好写对了）。现在的 bat 由**同一份模板生成**，
-   且保证 **纯 ASCII + CRLF + 无 BOM**。
-   不弹 UAC 的验证办法：`cmd /c "set CPF_ELEV=1& "<路径>\2-check.bat" < nul"`。
+   统一 **UTF-8（无 BOM）+ `chcp 65001` + CRLF**（2026-10-31 从 GBK 改过来：本机 `chcp 936` 有时不生效）。
+   不弹 UAC 的验证办法：`cmd /c "set CPF_ELEV=1& "<路径>\2-查看状态.bat" < nul"`。
 2. **EC 操作必须串行**：服务、bat、临时脚本读写 EC 走同一套端口事务，两个进程同时做会互相插队、
    读到别人的应答。对策（互斥体 + 哨兵 + 一致性校验 + 读前等待 + 标志两轮确认 + 温度突变过滤）全部在 `03` §4。

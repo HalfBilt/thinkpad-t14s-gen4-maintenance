@@ -14,6 +14,8 @@
 | 风扇 | 独立服务 `T14sFanSvc`，曲线 `[[50,1],[56,2],[60,3],[66,6],[72,7],[80,64]]`（2471/2858/3181/3456/3858/4807 RPM），回差 6°C、驻留 90 秒、DTS ≥88 连高两拍拉满 |
 | EC 访问 | 主循环 2 秒（只碰 MSR）/ 温度 15 秒（**走 ACPI 热区，不占 EC 总线**；保护中 5 秒）/ 固件标志 30 秒（凉机 120 秒） |
 | 实测基准 | 满载核心峰值 92°C、零过热降频、撞车率 **≈1.1%**、读失败 0；`Event 88`：10/19 前 0 次、10/20 出现 2 次（11:47 真热 / 12:31 抢 EC 字节）、**10-23 改造后至 10-25 为 0 次**（见 `02` §4） |
+| 服务 | 10/31 12:35 重启后：`CpuPLFixSvc` / `T14sFanSvc` **Running / Automatic**，`TSCtl` Running / Manual，`\CpuPLFix` 任务存在（普通权限看不到） |
+| 硬断电 | **10/31 累计 7 次**（`6008`，无蓝屏 / 无 `41`）；第 7 次 10:32:25，EC 复位后撑到 1h50m。当前**未定性**，见 `10` |
 
 ---
 
@@ -27,16 +29,18 @@
 %APPDATA%\T14scontrol\fan            FanControl：风扇（日志在 fan\logs\）
 %APPDATA%\T14scontrol\hud            任务栏显示（日志在 hud\logs\）
 %APPDATA%\T14scontrol\status         两个服务写的快照 cpu.json / fan.json
+%APPDATA%\T14scontrol\0-重启后部署.bat  重启后双击一次（风扇 + CPU + HUD + 验证）
 Desktop\Hermes\电脑维护经验           本手册 + scripts
 ```
 
-**要备份的只有两个文件**：`cpu\config.json`、`fan\config.json`。
+**要备份的只有两个文件**：`cpu\config.json`、`fan\config.json`（两者都在 T14scontrol 仓库里跟踪）。
 
 ### 三个"别踩"的坑
 
 1. **`0x40` 要 20~25 秒才升到位。** 标定时每档至少等 25 秒再读数；等 12 秒会测出 4160 的假值。
    真值 `0x40` = 4807（实测范围 4608~4901，与温度/功耗无关）。
-2. **只有 `0x06` 的转速随温度变**（3456~3861）；`0x07` 恒为 3858。
+2. **`0x06`/`0x07` 的转速都随热态变**：低温 3456 / 3858，热态 ~3880 / ~4380；
+   `0x08~0x3F` 热态与 `0x07` 同速（无可用的中间档）。
    **曲线只看档位顺序**（1<2<…<6≈7<`0x40`），别拿转速当判据。
 3. **曲线语义是 `temp >= t` 才升到该档**（每点覆盖 `[t_i, t_{i+1})`）。按"上界"理解会整条排错一位 ——
    改完必须逐度打印验证。
@@ -51,7 +55,7 @@ Desktop\Hermes\电脑维护经验           本手册 + scripts
 
 ### 验证方法
 
-- `%APPDATA%\T14scontrol\cpu\dev\selftest.py` —— **离线回归 67 项**，改完代码必跑（不碰 EC）
+- `%APPDATA%\T14scontrol\cpu\dev\selftest.py` —— **离线回归 84 项**，改完代码必跑（不碰 EC）
 - `%APPDATA%\T14scontrol\fan\src\fan_control.py --selftest` —— 风扇侧离线自检
 - `%APPDATA%\T14scontrol\cpu\2-查看状态.bat` —— 实机体检（**需管理员**，要开 TSCtl 驱动）
 - `scripts\体检.bat` —— 一键体检，结果存 `体检报告-时间.txt`
@@ -75,5 +79,4 @@ Desktop\Hermes\电脑维护经验           本手册 + scripts
 
 脚本都在 `scripts\`；最常用 **`scripts\体检.bat`**（一键体检）。
 
-> 工具本体不在本仓库 —— 源码：<https://github.com/HalfBilt/CpuPLFix>（CPU 侧）、
-> <https://github.com/HalfBilt/ThinkPad-T14s-Gen4-FanControl>（风扇侧）。
+> 工具本体不在本仓库 —— 源码统一在 <https://github.com/HalfBilt/T14scontrol>（`cpu/`、`fan/`、`hud/`）。

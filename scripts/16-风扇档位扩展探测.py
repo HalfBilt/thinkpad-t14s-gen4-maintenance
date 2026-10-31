@@ -115,7 +115,7 @@ def main():
 
     t0 = cpf.ec_temp()
     if t0 is None:
-        say('[X] EC 读不到温度，先跑 2-check 看驱动')
+        say('[X] EC 读不到温度，先跑 cpu\\2-查看状态.bat 看驱动')
         return 1
     say('起始 EC 温度 = %d°C' % t0)
     if t0 >= 75:

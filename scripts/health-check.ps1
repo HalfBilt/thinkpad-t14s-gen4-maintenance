@@ -206,7 +206,7 @@ if ($perf.Count -gt 0) {
     W ("  16 核频率(MHz)       : {0}" -f ($perf -join ' '))
     W ("  最高 / 最低          : {0} / {1}" -f $perf[-1], $perf[0])
     if ($perf[-1] -lt 700) {
-        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 2-check.bat 看功耗墙，救急可双击 %APPDATA%\T14scontrol\cpu\1-install.bat（手册 01）"
+        W "  ❌ 所有核都压在 0.7GHz 以下 —— 疑似被固件锁低。跑 cpu\2-查看状态.bat 看功耗墙，救急可双击 %APPDATA%\T14scontrol\cpu\1-安装.bat（手册 01）"
         $cpuIssue++
     }
 } else {

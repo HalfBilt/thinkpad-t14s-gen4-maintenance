@@ -128,7 +128,7 @@ def main():
     # ---- 端口通道自检（用加固读法，失败就早退）--------------------------
     t0 = cpf.ec_temp()
     if t0 is None:
-        say('[X] EC 读不到温度 —— 驱动/端口不通，先跑 2-check 看驱动')
+        say('[X] EC 读不到温度 —— 驱动/端口不通，先跑 cpu\\2-查看状态.bat 看驱动')
         open(OUT, 'w', encoding='utf-8').write('\n'.join(LOG) + '\n')
         return 1
     say('EC 温度读到 %d°C —— 通道正常' % t0)
@@ -265,7 +265,7 @@ def main():
         say()
         say('=== 结论 ===')
         if not rpms:
-            say('  没数据，没法判读。先跑 2-check 确认 EC 能读。')
+            say('  没数据，没法判读。先跑 cpu\\2-查看状态.bat 确认 EC 能读。')
         else:
             mx = max(rpms)
             lv, lv_rpm = min(LEVEL_RPM.items(), key=lambda kv: abs(kv[1] - mx))
