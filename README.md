@@ -2,6 +2,9 @@
 
 > 快速入口。本手册只记**当前结论**：机器是什么样、现在怎么配、哪里有坑。
 > 改动历史在 git 记录和 <https://github.com/HalfBilt/T14scontrol> 的仓库里，不在这里。
+>
+> **维护约定**：本文档只在"结论变了"时改，不记过程；参数以 [`08-参数速查表.md`](08-参数速查表.md) 为唯一来源；
+> 已作废的结论直接删，不留"以前是……"的说法（要考古去看 git log）。
 
 **先读 [`00-电脑综述.md`](00-电脑综述.md)** —— 机器档案、当前状态、关键设计决定（含回滚）、出问题先做什么。
 **要调参数看 [`08-参数速查表.md`](08-参数速查表.md)** —— 全部参数当前值一页看完（**全手册唯一参数来源**）。
@@ -12,7 +15,7 @@
 
 | 要做什么 | 入口 |
 |---|---|
-| 一键体检 | `scripts\体检.bat`（结果存 `体检报告-时间.txt`） |
+| 一键体检 | `scripts\体检.bat`（结果存 `scripts\体检报告-时间.txt`） |
 | 查系统状态（管理员） | `%APPDATA%\T14scontrol\cpu\2-查看状态.bat` |
 | 查风扇 | `%APPDATA%\T14scontrol\fan\3-风扇服务状态.bat` |
 | 改配置 | CPU：`CpuPLFixCfg.py`（1 分钟内自动生效）；风扇：改 `fan\config.json` 后重启服务 |
@@ -24,6 +27,10 @@
 %APPDATA%\T14scontrol\        工具根目录（runtime 共用 Python 3.13 / cpu / fan / hud / status）
 Desktop\Hermes\电脑维护经验   本手册 + scripts\
 ```
+
+> 本仓库**只放文档和 `scripts\`**，工具本体（CpuPLFix / FanControl / HUD）在
+> <https://github.com/HalfBilt/T14scontrol>：部署目录 `%APPDATA%\T14scontrol` 本身就是它的 git 工作区，
+> 重装按 [`09`](09-备份与一键还原.md) 还原，不要从这里拷代码。
 
 ---
 
@@ -44,3 +51,4 @@ Desktop\Hermes\电脑维护经验   本手册 + scripts\
 | [`10-突然断电排查-2026-10-31.md`](10-突然断电排查-2026-10-31.md) | 突发硬断电（6008，**未复现/未定性**）：结论 · 已排除项 · EC 复位预案 · 下一步 |
 
 > 脚本都在 `scripts\`（体检 / 性能自检 / 满载温度 / EC 诊断等），文档里点得到名字的都能在 `scripts\` 找到。
+> `scripts\` 下的 `*-时间戳.txt` 是历史实测记录，已被 `.gitignore` 排除、**不入库**。

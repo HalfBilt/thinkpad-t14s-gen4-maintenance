@@ -8,7 +8,7 @@
 | 源码 | <https://github.com/HalfBilt/T14scontrol>（`cpu/` 目录，与风扇、HUD 同仓） |
 | 本机安装位置 | `C:\Users\Ting\AppData\Roaming\T14scontrol\cpu`（**部署目录就是 git 工作区**） |
 | 运行时 | 上一级 `T14scontrol\runtime`，两个服务 + HUD 共用；**别删别改名**，`1-安装.bat` 不会自带 |
-| ⚠️ | **工具本体不存进本手册仓库**（这里只放文档 + `scripts\`） |
+| ⚠️ | **工具本体不存进本手册仓库**（这里只放文档 + `scripts\`）。手册仓只管这台机器怎么配，代码仓只管实现 |
 
 ---
 

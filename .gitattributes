@@ -1,6 +1,11 @@
 # 换行与文本处理规则
-# .ps1 / .bat 必须是 CRLF + UTF-8 BOM，否则 PowerShell 5.1 会按 GBK 解析中文注释并报语法错
+# 入库后按扩展名统一换行；编码（BOM 与否）由写文件的一方负责，见 07 §4：
+#   .ps1 → UTF-8 with BOM（PowerShell 5.1 无 BOM 会按 ANSI 读，中文注释直接语法报错）
+#   .bat → UTF-8 无 BOM + chcp 65001（BOM 会让 cmd 把第一行打成乱码）
+#   .md  → UTF-8，LF
 * text=auto
+
 *.ps1 text eol=crlf
 *.bat text eol=crlf
 *.md  text eol=lf
+*.py  text eol=lf
