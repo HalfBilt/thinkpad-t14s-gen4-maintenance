@@ -13,7 +13,7 @@
 判读规则写在输出末尾。
 
 依赖：**已装 CpuPLFix** —— 借它的 `CpuPLFix.py` 读写 MSR/MMIO，用它的 TSCtl 驱动。
-      没装就先看手册第八节，或第十一节第 3 步。
+      没装就先看 `01`（CpuPLFix）和 `07 §3`（安装）。
 来源：agent 工作区的 _perfcheck.py（2026-10-18 收录；路径改成自动定位，其余逻辑未动）。
 """
 import importlib.util
@@ -28,7 +28,7 @@ BURN = os.path.join(HERE, '_负载发生器.py')
 PY = sys.executable
 
 if not os.path.isfile(os.path.join(BASE, 'CpuPLFix.py')):
-    sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见手册第八节' % BASE)
+    sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见 `01` / `07 §3`' % BASE)
 if not os.path.isfile(BURN):
     sys.exit('[X] 同目录缺 _负载发生器.py')
 
@@ -163,7 +163,7 @@ if issues:
 else:
     L.append('  [√] 未发现降频迹象')
 L.append('')
-L.append('  参考基线(本机 2026-10-18 实测): 单线程应到 48(4.8GHz) 左右;')
+L.append('  参考基线(本机 2026-10-18 实测): 单线程应到 48(4.8GHz) 左右; 判据是 >=46(4.6GHz);')
 L.append('  8 进程满载 40W 档: 功耗 32~42W, 倍频 2.7~2.9GHz; 100C 是 TjMax, 属设计内行为。')
 
 with open(OUT, 'w', encoding='utf-8') as f:

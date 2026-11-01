@@ -178,7 +178,7 @@ MSR_POWER_CTL = 0x1FC          # IA32_POWER_CTL（ThrottleStop 的 "BD PROCHOT" 
 def load_cpf():
     p = os.path.join(BASE, 'CpuPLFix.py')
     if not os.path.isfile(p):
-        sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见手册第八节' % BASE)
+        sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见 `01` / `07 §3`' % BASE)
     spec = importlib.util.spec_from_file_location('cpf', p)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
@@ -209,7 +209,7 @@ def open_ec(cpf):
         sys.exit('[X] 需要管理员权限（TSCtl 驱动设备只对管理员开放）。\n'
                  '    请双击同目录的 13-EC诊断.bat —— 它会自己弹 UAC 提权再跑。')
     if not cpf.ensure_driver(verbose=False):
-        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见手册第八节）')
+        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见 `01` / `07 §3`）')
     st = cpf.rd_port(0x66)
     if st is None:
         sys.exit('[X] I/O 端口读失败：不是管理员 / 驱动没起来 / 驱动不允许端口 I/O')

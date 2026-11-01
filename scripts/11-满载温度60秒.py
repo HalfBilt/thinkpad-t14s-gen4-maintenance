@@ -8,7 +8,7 @@
 读法（温度 = TjMax - DTS，DTS 是距 TjMax 的余量，按 Intel SDM）：
   - 温度摸到 100 = 撞 TjMax 温度墙，频率被压低是 thermal throttle 的正常表现，
     **不是** 功耗墙 —— 看"功耗W"那列有没有真到档位上限即可区分。
-  - 找出散热能稳定吐多少瓦 → 决定 PL1 该给多大（见手册 8.4）。
+  - 找出散热能稳定吐多少瓦 → 决定 PL1 该给多大（见 `01 §3.3`）。
 
 依赖：**已装 CpuPLFix**（借它的 CpuPLFix.py 读 MSR，用它的 TSCtl 驱动）。
 来源：agent 工作区的 _burn60b.py（2026-10-18 收录；TjMax 改成现场读取，
@@ -27,7 +27,7 @@ BURN = os.path.join(HERE, '_负载发生器.py')
 PY = sys.executable
 
 if not os.path.isfile(os.path.join(BASE, 'CpuPLFix.py')):
-    sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见手册第八节' % BASE)
+    sys.exit('[X] 找不到 CpuPLFix（%s）—— 先装它，见 `01` / `07 §3`' % BASE)
 if not os.path.isfile(BURN):
     sys.exit('[X] 同目录缺 _负载发生器.py')
 

@@ -114,7 +114,7 @@ def main():
     if not cpf.is_admin():
         sys.exit('[X] 需要管理员权限。请双击同目录的 17-风扇8档28W实测.bat。')
     if not cpf.ensure_driver(verbose=False):
-        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见手册 01 §6）')
+        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见 `03 §6.1`）')
     if not os.path.isfile(BURN):
         sys.exit('[X] 同目录缺 _负载发生器.py')
 

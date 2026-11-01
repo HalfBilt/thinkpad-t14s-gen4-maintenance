@@ -8,7 +8,7 @@ set "PY="
 if exist "%APPDATA%\T14scontrol\runtime\python.exe" set "PY=%APPDATA%\T14scontrol\runtime\python.exe"
 if not defined PY for /f "delims=" %%p in ('where python 2^>nul') do if not defined PY set "PY=%%p"
 if not defined PY (
-  echo [X] 没找到 Python。请先装 CpuPLFix（自带 runtime\python.exe），见手册第八节。
+  echo [X] 没找到 Python。请先装 CpuPLFix（自带 runtime\python.exe），见 01 / 07 §3。
   pause
   exit /b 1
 )

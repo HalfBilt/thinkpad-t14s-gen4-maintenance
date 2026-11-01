@@ -74,10 +74,10 @@ if ($hasWinSoftVol -and $blockedThisBoot) {
 } elseif ($hasWinSoftVol -and -not $blockedThisBoot) {
     Line ("  本次开机（{0:MM-dd HH:mm} 起）没有新的拦截记录，WinSoftVol 应该已经能加载。" -f $boot) 'Green'
     Line ("  最后一次拦截是 {0:MM-dd HH:mm:ss}（重启前）。" -f $newest)
-    if ($bad) { Line '  但设备仍有异常 -> 再重启一次；还不行就按手册第五节重装联想官方音频驱动整包。' 'Yellow' }
+    if ($bad) { Line '  但设备仍有异常 -> 再重启一次；还不行就按 04 §1 重装联想官方音频驱动整包。' 'Yellow' }
     else { Line '  [√] 音频正常' 'Green' }
 } elseif ($bad) {
-    Line '  没挂 WinSoftVol，但设备仍有问题 -> 按手册第五节查（可能需要重装联想官方音频驱动整包）。' 'Yellow'
+    Line '  没挂 WinSoftVol，但设备仍有问题 -> 按 04 §1 查（可能需要重装联想官方音频驱动整包）。' 'Yellow'
 } else {
     Line '  [√] 一切正常' 'Green'
 }

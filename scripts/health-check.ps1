@@ -115,7 +115,7 @@ W "---- 8) 电池 / 硬盘 ----"
 $bat = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
 if ($bat) { W ("  电量: {0}%   电池状态码: {1}（2=接电源）" -f $bat.EstimatedChargeRemaining, $bat.BatteryStatus)
 if (-not $bat.EstimatedChargeRemaining -or [string]::IsNullOrWhiteSpace($bat.Name)) {
-    W "  [X] 电池读数无效（ACPI 返回 0xFFFFFFFF，界面会显示 -1）—— 处置: 关机 -> 拔适配器 -> 长按电源 30 秒 -> 插回开机（手册 03 §9）"
+    W "  [X] 电池读数无效（ACPI 返回 0xFFFFFFFF，界面会显示 -1）—— 处置: 关机 -> 拔适配器 -> 长按电源 30 秒 -> 插回开机（03 §8）"
 } }
 Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
     W ("  磁盘: {0} | {1} | {2}" -f $_.FriendlyName, $_.MediaType, $_.HealthStatus)
@@ -134,8 +134,8 @@ W ("  驱动文件             : {0}" -f (Test-Path "$env:SystemRoot\System32\dr
 $uf = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}' -Name UpperFilters -ErrorAction SilentlyContinue).UpperFilters
 $ufStr = if ($uf) { ($uf -join ',') } else { '(读不到)' }
 W ("  MEDIA UpperFilters   : {0}" -f $ufStr)
-if ($ufStr -notmatch 'WinSoftVol') { W "      ^^ 没挂上 WinSoftVol → 系统音量条会无效（第七节 7.1）"; $mediaIssue++ }
-if ($ufStr -notmatch 'ksthunk')    { W "      ^^ 少了 ksthunk，音频会坏（第七节 7.1 的坑）"; $mediaIssue++ }
+if ($ufStr -notmatch 'WinSoftVol') { W "      ^^ 没挂上 WinSoftVol → 系统音量条会无效（04 §1）"; $mediaIssue++ }
+if ($ufStr -notmatch 'ksthunk')    { W "      ^^ 少了 ksthunk，音频会坏（04 §1 的坑）"; $mediaIssue++ }
 
 # 9.2 智能应用控制（SAC 一转强制就会把 WinSoftVol 全家拦成 Code 39）
 $sac = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
@@ -149,7 +149,7 @@ $mediaBad = @($mediaAll | Where-Object { $_.Status -ne 'OK' })
 W ("  音频设备             : {0} 个正常 / {1} 个异常" -f ($mediaAll.Count - $mediaBad.Count), $mediaBad.Count)
 foreach ($d in $mediaBad) {
     W ("      ❌ {0} | {1} | {2}" -f $d.Status, $d.FriendlyName, $d.ProblemDescription)
-    if ("$($d.ProblemDescription)" -match '39|0x27') { W "         Code 39 = 过滤器加载失败，看 9.2 的 SAC 那行（第七节 7.2）" }
+    if ("$($d.ProblemDescription)" -match '39|0x27') { W "         Code 39 = 过滤器加载失败，看 04 §2 的 SAC 那行" }
     $mediaIssue++
 }
 
@@ -159,7 +159,7 @@ $ciNew = @(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegr
 $ciOld = @(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational'; Id=3077,3004; StartTime=$boot.AddDays(-7); EndTime=$boot} -ErrorAction SilentlyContinue |
            Where-Object { $_.Message -match 'WinSoftVol' }).Count
 if ($ciNew.Count -gt 0) {
-    W ("  ⚠️ 本次开机已发生 {0} 次 WinSoftVol 被拦（最近 {1}）→ SAC 又在拦，声音随时会没，见第七节 7.2" -f $ciNew.Count, $ciNew[0].TimeCreated.ToString('MM-dd HH:mm'))
+    W ("  ⚠️ 本次开机已发生 {0} 次 WinSoftVol 被拦（最近 {1}）→ SAC 又在拦，声音随时会没，见 04 §2" -f $ciNew.Count, $ciNew[0].TimeCreated.ToString('MM-dd HH:mm'))
     $mediaIssue++
 } else {
     W ("  本次开机拦截记录      : 无（近 7 天历史 {0} 条，是 SAC 关闭前的遗留，不用管）" -f $ciOld)
@@ -217,7 +217,7 @@ if ($perf.Count -gt 0) {
 W ""
 W "---- 11) 固件限速（EID37） ----"
 $e37 = @(Get-WinEvent -FilterHashtable @{LogName='System'; Id=37; ProviderName='Microsoft-Windows-Kernel-Processor-Power'; StartTime=$boot} -ErrorAction SilentlyContinue)
-W ("  本次开机 {0} 条（开机约 62 秒出现、71 秒后自愈，属已知现象；不能拿它判断降频，见手册第三节）" -f $e37.Count)
+W ("  本次开机 {0} 条（开机约 62 秒出现、71 秒后自愈，属已知现象；不能拿它判断降频，见 06 §2）" -f $e37.Count)
 
 # ---------- 12. 结论 ----------
 W ""
@@ -228,7 +228,7 @@ if ($realIssue -eq 0) {
 } else {
     W ("  ⚠️ 有 {0} 处需要留意：系统 {1} / 应用 {2} / 设备 {3} / 音频 {4} / 降频值守 {5}" -f `
         $realIssue, $hit.Count, $app.Count, $bad.Count, $mediaIssue, $cpuIssue)
-    W "     请打开上一级的《README.md》（电脑维护手册）第三节（无害警告）与第四节（真问题）对照。"
+    W "     请对照 06 §2（不用当故障查的）与 00 §四（出问题先做什么）。"
 }
 W ""
 W "================ 报告结束 ================"

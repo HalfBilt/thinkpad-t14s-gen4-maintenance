@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """16-风扇档位扩展探测.py —— 验证 HFSP(0x2F) 在 0x08~0x3F 是否还有真实档位
 
-背景：手册只标定过 0x01~0x07 / 0x40 / 0x80。用户反馈 0x08~0x3F 应该也存在。
+背景：手册（`02 §1.1`）只标定过 0x01~0x07 / 0x40 / 0x80。用户反馈 0x08~0x3F 应该也存在。
       本脚本无负载逐点写入候选值，看 EC 回读值 + 实际转速是否变化。
 
 怎么跑：双击同目录 `16-风扇档位扩展探测.bat`（自动弹 UAC）
@@ -97,7 +97,7 @@ def main():
     if not cpf.is_admin():
         sys.exit('[X] 需要管理员权限。请双击同目录的 16-风扇档位扩展探测.bat。')
     if not cpf.ensure_driver(verbose=False):
-        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见手册 01 §6）')
+        sys.exit('[X] TSCtl 驱动打不开（CpuPLFix 没装好？见 `03 §6.1`）')
 
     LOG = []
     OUT = os.path.join(HERE, '风扇档位扩展-%s.txt' % time.strftime('%Y%m%d-%H%M%S'))
