@@ -66,7 +66,7 @@ CPU 实际执行**固件侧那份**。固件在开机 / 唤醒时会把它改成
 | 工具目录 | `%APPDATA%\T14scontrol\cpu` |
 | 主程序 / 服务 | `CpuPLFix.py` / `CpuPLFixSvc.py` |
 | 配置命令 | `CpuPLFixCfg.py`（命令行直调；只读写 `config.json`，带范围校验和 `undo`） |
-| 驱动 | `TSCtl.sys`（从 ThrottleStop 提取的签名驱动，服务名 `TSCtl`，按需启动；**放 System32**） |
+| 驱动 | `TSCtl.sys`（ThrottleStop 随包的低层驱动，从它的 exe 资源里原样提取、未修改；服务名 `TSCtl`，按需启动；**放 System32**）。签名可复核：`Valid` / `CN=TechPowerUp LLC` / `3.0.0.0` |
 | 计划任务 | `\CpuPLFix`（SYSTEM 身份，普通权限不可见） |
 | 日志 | `logs\fix.log`（只记事件、不记轮询；超 2MB 滚一份） |
 | 目录入口 | 4 个 `.bat`：`1-安装` / `2-查看状态` / `3-重启服务` / `4-卸载` |

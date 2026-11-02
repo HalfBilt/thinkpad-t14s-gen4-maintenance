@@ -27,6 +27,32 @@
 
 ---
 
+## 数字怎么复核（给下一个 AI 或未来的自己）
+
+**本手册的每个数字都应该能现场重算。** 怀疑过期就按这张表跑一遍，别照抄——照抄过期数字比不懂更糟。
+
+| 断言 | 复核方法 |
+|---|---|
+| CPU 12C/16T、L3 18MB | `Get-CimInstance Win32_Processor \| fl Name,NumberOfCores,NumberOfLogicalProcessors,L3CacheSize` |
+| 内存 32GB | `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB` |
+| Windows 26H2 / 26300.9818 | `Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' \| fl DisplayVersion,UBR` |
+| BIOS `N3PET05A` | `Get-CimInstance Win32_BIOS \| fl SMBIOSBIOSVersion,ReleaseDate` |
+| 电池 48140/57000、72 循环、BYD | `powercfg /batteryreport` → `DESIGN CAPACITY` / `FULL CHARGE CAPACITY` / `CYCLE COUNT` / `MANUFACTURER` |
+| Secure Boot 关 | `Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State'` → `UEFISecureBootEnabled=0` |
+| VBS / 内存完整性 关 | `Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard Win32_DeviceGuard` → `VirtualizationBasedSecurityStatus=0` |
+| 测试签名 开 | 需管理员 `bcdedit /enum {current}`；**佐证**：自签驱动 `WinSoftVol.sys`（`CN=WinSoftVol (Self-Signed)`）在 RUNNING |
+| 功耗墙 28/55W | `%APPDATA%\T14scontrol\status\cpu.json` 的 `pl1`/`pl2`，或 `cpu\2-查看状态.bat` |
+| 事件统计（13/15/88/41/6008） | `Get-WinEvent -FilterHashtable @{LogName='System'; Id=13,15,88,41,6008}` —— **先确认日志窗口起点**，本机 20MB 日志约只覆盖 3 周 |
+| EC 寄存器 / 充电阈值 | `scripts\13-EC诊断.bat dump`（管理员，只读） |
+| EC 总线撞车率 | `%APPDATA%\T14scontrol\cpu\logs\fix.log` 里的「EC 总线体检」行 |
+| 风扇档位↔转速 | `scripts\12-风扇天花板实测` 的档位实测记录（`scripts\风扇档位-*.txt`） |
+| 固件会不会抢 `0x2F` | `scripts\fan_ab_test.py native`（管理员）复跑，看 `0x2F` 是否被改写 |
+
+> **写作约定**：能复核的写数字 + 来源命令；复核不到的写「未核实」，不写「从未 / 永久 / 必然」这类无法证明的话。
+> 任何一条被实测推翻，直接删掉或改写，不留「以前是……」——要考古看 git log。
+
+---
+
 ## 快速操作
 
 | 要做什么 | 入口 |
