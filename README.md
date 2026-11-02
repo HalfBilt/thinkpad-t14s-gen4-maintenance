@@ -40,7 +40,7 @@
 | 电池 48140/57000、72 循环、BYD | `powercfg /batteryreport` → `DESIGN CAPACITY` / `FULL CHARGE CAPACITY` / `CYCLE COUNT` / `MANUFACTURER` |
 | Secure Boot 关 | `Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State'` → `UEFISecureBootEnabled=0` |
 | VBS / 内存完整性 关 | `Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard Win32_DeviceGuard` → `VirtualizationBasedSecurityStatus=0` |
-| 测试签名 开 | 需管理员 `bcdedit /enum {current}`；**佐证**：自签驱动 `WinSoftVol.sys`（`CN=WinSoftVol (Self-Signed)`）在 RUNNING |
+| 测试签名 开 | `bcdedit /enum {current}` → `testsigning Yes`（管理员；2026-11-02 实测）。佐证：自签驱动 `WinSoftVol.sys` 在 RUNNING |
 | 功耗墙 28/55W | `%APPDATA%\T14scontrol\status\cpu.json` 的 `pl1`/`pl2`，或 `cpu\2-查看状态.bat` |
 | 事件统计（13/15/88/41/6008） | `Get-WinEvent -FilterHashtable @{LogName='System'; Id=13,15,88,41,6008}` —— **先确认日志窗口起点**，本机 20MB 日志约只覆盖 3 周 |
 | EC 寄存器 / 充电阈值 | `scripts\13-EC诊断.bat dump`（管理员，只读） |
@@ -58,6 +58,7 @@
 | 要做什么 | 入口 |
 |---|---|
 | 一键体检 | `scripts\体检.bat`（结果存 `scripts\体检报告-时间.txt`） |
+| 一次核对全部事实（管理员） | `scripts\31-事实核对.ps1` → `scripts\事实核对-时间戳.txt` |
 | 查系统状态（管理员） | `%APPDATA%\T14scontrol\cpu\2-查看状态.bat` |
 | 查风扇 | `%APPDATA%\T14scontrol\fan\3-风扇服务状态.bat` |
 | 改配置 | CPU：`CpuPLFixCfg.py`（1 分钟内自动生效）；风扇：改 `fan\config.json` 后重启服务 |
